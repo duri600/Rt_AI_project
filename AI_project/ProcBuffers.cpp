@@ -24,13 +24,10 @@ short **rec_out;
 short **iva_out;
 short **nmf_out;
 #endif
-//short  **test2;
 double **Input;
 double **basis;
 double **basis_f, **basis_m, **basis_fn, **basis_mn;
 double **output, **output_temp, **input_temp;
-//double *test_buffer1;
-//double *test_buffer2;
 double **InputBuffers, **xx_lp, **InitCond, *XX_LP, *XX, **x, *LPF;
 double **vad_input_tmp;
 double **test2_pad;
