@@ -1,13 +1,17 @@
-// Copyright (C) 2013-2016 National ICT Australia (NICTA)
+// Copyright 2008-2016 Conrad Sanderson (http://conradsanderson.id.au)
+// Copyright 2008-2016 National ICT Australia (NICTA)
 // 
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-// -------------------------------------------------------------------
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
 // 
-// Written by Conrad Sanderson - http://conradsanderson.id.au
-// Written by Ryan Curtin
-// Written by Yixuan Qiu
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ------------------------------------------------------------------------
 
 
 //! \addtogroup sp_auxlib
@@ -85,7 +89,7 @@ sp_auxlib::eigs_sym(Col<eT>& eigval, Mat<eT>& eigvec, const SpBase<eT, T1>& X, c
 template<typename eT, typename T1>
 inline
 bool
-sp_auxlib::eigs_sym_newarp(Col<eT>& eigval, Mat<eT>& eigvec, const SpBase<eT, T1>& X, const uword n_eigvals, const char* form_str, const eT default_tol)
+sp_auxlib::eigs_sym_newarp(Col<eT>& eigval, Mat<eT>& eigvec, const SpBase<eT, T1>& X_expr, const uword n_eigvals, const char* form_str, const eT default_tol)
   {
   arma_extra_debug_sigprint();
   
@@ -95,7 +99,10 @@ sp_auxlib::eigs_sym_newarp(Col<eT>& eigval, Mat<eT>& eigvec, const SpBase<eT, T1
     
     arma_debug_check( (form_val != form_lm) && (form_val != form_sm) && (form_val != form_la) && (form_val != form_sa), "eigs_sym(): unknown form specified" );
     
-    const newarp::SparseGenMatProd<eT> op(X.get_ref());
+    const unwrap_spmat<T1> U(X_expr.get_ref());
+    const SpMat<eT>&       X = U.M;
+    
+    const newarp::SparseGenMatProd<eT> op(X);
     
     arma_debug_check( (op.n_rows != op.n_cols), "eigs_sym(): given matrix must be square sized" );
     
@@ -178,7 +185,7 @@ sp_auxlib::eigs_sym_newarp(Col<eT>& eigval, Mat<eT>& eigvec, const SpBase<eT, T1
     {
     arma_ignore(eigval);
     arma_ignore(eigvec);
-    arma_ignore(X);
+    arma_ignore(X_expr);
     arma_ignore(n_eigvals);
     arma_ignore(form_str);
     arma_ignore(default_tol);
@@ -327,7 +334,7 @@ sp_auxlib::eigs_gen(Col< std::complex<T> >& eigval, Mat< std::complex<T> >& eigv
 template<typename T, typename T1>
 inline
 bool
-sp_auxlib::eigs_gen_newarp(Col< std::complex<T> >& eigval, Mat< std::complex<T> >& eigvec, const SpBase<T, T1>& X, const uword n_eigvals, const char* form_str, const T default_tol)
+sp_auxlib::eigs_gen_newarp(Col< std::complex<T> >& eigval, Mat< std::complex<T> >& eigvec, const SpBase<T, T1>& X_expr, const uword n_eigvals, const char* form_str, const T default_tol)
   {
   arma_extra_debug_sigprint();
   
@@ -337,7 +344,10 @@ sp_auxlib::eigs_gen_newarp(Col< std::complex<T> >& eigval, Mat< std::complex<T> 
     
     arma_debug_check( (form_val == form_none), "eigs_gen(): unknown form specified" );
     
-    const newarp::SparseGenMatProd<T> op(X.get_ref());
+    const unwrap_spmat<T1> U(X_expr.get_ref());
+    const SpMat<T>&        X = U.M;
+    
+    const newarp::SparseGenMatProd<T> op(X);
     
     arma_debug_check( (op.n_rows != op.n_cols), "eigs_sym(): given matrix must be square sized" );
     
@@ -438,7 +448,7 @@ sp_auxlib::eigs_gen_newarp(Col< std::complex<T> >& eigval, Mat< std::complex<T> 
     {
     arma_ignore(eigval);
     arma_ignore(eigvec);
-    arma_ignore(X);
+    arma_ignore(X_expr);
     arma_ignore(n_eigvals);
     arma_ignore(form_str);
     arma_ignore(default_tol);
@@ -740,13 +750,13 @@ sp_auxlib::spsolve_simple(Mat<typename T1::elem_type>& X, const SpBase<typename 
     if(A.n_rows > A.n_cols)
       {
       arma_stop_logic_error("spsolve(): solving over-determined systems currently not supported");
-      X.reset();
+      X.soft_reset();
       return false;
       }
     else if(A.n_rows < A.n_cols)
       {
       arma_stop_logic_error("spsolve(): solving under-determined systems currently not supported");
-      X.reset();
+      X.soft_reset();
       return false;
       }
     
@@ -757,6 +767,8 @@ sp_auxlib::spsolve_simple(Mat<typename T1::elem_type>& X, const SpBase<typename 
       X.zeros(A.n_cols, X.n_cols);
       return true;
       }
+    
+    if(A.n_nonzero == uword(0))  { X.soft_reset(); return false; }
     
     if(arma_config::debug)
       {
@@ -785,7 +797,7 @@ sp_auxlib::spsolve_simple(Mat<typename T1::elem_type>& X, const SpBase<typename 
       {
       destroy_supermatrix(a);
       destroy_supermatrix(x);
-      X.reset();
+      X.soft_reset();
       return false;
       }
     
@@ -808,6 +820,7 @@ sp_auxlib::spsolve_simple(Mat<typename T1::elem_type>& X, const SpBase<typename 
     
     int info = 0; // Return code.
     
+    arma_extra_debug_print("superlu::gssv()");
     superlu::gssv<eT>(&options, &a, perm_c, perm_r, &l, &u, &x, &stat, &info);
     
     
@@ -886,13 +899,13 @@ sp_auxlib::spsolve_refine(Mat<typename T1::elem_type>& X, typename T1::pod_type&
     if(A.n_rows > A.n_cols)
       {
       arma_stop_logic_error("spsolve(): solving over-determined systems currently not supported");
-      X.reset();
+      X.soft_reset();
       return false;
       }
     else if(A.n_rows < A.n_cols)
       {
       arma_stop_logic_error("spsolve(): solving under-determined systems currently not supported");
-      X.reset();
+      X.soft_reset();
       return false;
       }
     
@@ -904,6 +917,8 @@ sp_auxlib::spsolve_refine(Mat<typename T1::elem_type>& X, typename T1::pod_type&
       {
       return true;
       }
+    
+    if(A.n_nonzero == uword(0))  { X.soft_reset(); return false; }
     
     if(arma_config::debug)
       {
@@ -937,7 +952,7 @@ sp_auxlib::spsolve_refine(Mat<typename T1::elem_type>& X, typename T1::pod_type&
       destroy_supermatrix(x);
       destroy_supermatrix(a);
       destroy_supermatrix(b);
-      X.reset();
+      X.soft_reset();
       return false;
       }
     
@@ -990,9 +1005,16 @@ sp_auxlib::spsolve_refine(Mat<typename T1::elem_type>& X, typename T1::pod_type&
     char  work[8];
     int  lwork = int(0);  // 0 means superlu will allocate memory
     
+    arma_extra_debug_print("superlu::gssvx()");
     superlu::gssvx<eT>(&options, &a, perm_c, perm_r, etree, equed, R, C, &l, &u, &work[0], lwork, &b, &x, &rpg, &rcond, ferr, berr, &glu, &mu, &stat, &info);
     
+    bool status = false;
+    
     // Process the return code.
+    if(info == 0)
+      {
+      status = true;
+      }
     if( (info > 0) && (info <= int(A.n_cols)) )
       {
       // std::stringstream tmp;
@@ -1000,9 +1022,10 @@ sp_auxlib::spsolve_refine(Mat<typename T1::elem_type>& X, typename T1::pod_type&
       // arma_debug_warn(tmp.str());
       }
     else
-    if(info == int(A.n_cols+1))
+    if( (info == int(A.n_cols+1)) && (user_opts.allow_ugly) )
       {
-      // arma_debug_warn("spsolve(): system solved, but rcond is less than machine precision");
+      arma_debug_warn("spsolve(): system is singular to working precision (rcond: ", rcond, ")");
+      status = true;
       }
     else
     if(info > int(A.n_cols+1))
@@ -1033,7 +1056,7 @@ sp_auxlib::spsolve_refine(Mat<typename T1::elem_type>& X, typename T1::pod_type&
     
     out_rcond = rcond;
     
-    return (info == 0);
+    return status;
     }
   #else
     {
@@ -1339,6 +1362,7 @@ sp_auxlib::run_aupd
       switch (ido)
         {
         case -1:
+          // fallthrough
         case 1:
           {
           // We need to calculate the matrix-vector multiplication y = OP * x

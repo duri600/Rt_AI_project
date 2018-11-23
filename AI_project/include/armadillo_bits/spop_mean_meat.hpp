@@ -1,12 +1,17 @@
-// Copyright (C) 2012-2016 National ICT Australia (NICTA)
-//
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-// -------------------------------------------------------------------
+// Copyright 2008-2016 Conrad Sanderson (http://conradsanderson.id.au)
+// Copyright 2008-2016 National ICT Australia (NICTA)
 // 
-// Written by Conrad Sanderson - http://conradsanderson.id.au
-// Written by Ryan Curtin
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ------------------------------------------------------------------------
 
 
 //! \addtogroup spop_mean
@@ -74,12 +79,15 @@ spop_mean::apply_noalias_fast
     {
     Row<eT> acc(p_n_cols, fill::zeros);
     
+    eT* acc_mem = acc.memptr();
+    
     if(SpProxy<T1>::use_iterator)
       {
-      typename SpProxy<T1>::const_iterator_type it     = p.begin();
-      typename SpProxy<T1>::const_iterator_type it_end = p.end();
+      typename SpProxy<T1>::const_iterator_type it = p.begin();
       
-      while(it != it_end)  { acc[it.col()] += (*it);  ++it; }
+      const uword N = p.get_n_nonzero();
+      
+      for(uword i=0; i < N; ++i)  { acc_mem[it.col()] += (*it); ++it; }
       
       acc /= T(p_n_rows);
       }
@@ -87,7 +95,7 @@ spop_mean::apply_noalias_fast
       {
       for(uword col = 0; col < p_n_cols; ++col)
         {
-        acc[col] = arrayops::accumulate
+        acc_mem[col] = arrayops::accumulate
           (
           &p.get_values()[p.get_col_ptrs()[col]],
           p.get_col_ptrs()[col + 1] - p.get_col_ptrs()[col]
@@ -102,10 +110,13 @@ spop_mean::apply_noalias_fast
     {
     Col<eT> acc(p_n_rows, fill::zeros);
     
-    typename SpProxy<T1>::const_iterator_type it     = p.begin();
-    typename SpProxy<T1>::const_iterator_type it_end = p.end();
+    eT* acc_mem = acc.memptr();
     
-    while(it != it_end)  { acc[it.row()] += (*it);  ++it; }
+    typename SpProxy<T1>::const_iterator_type it = p.begin();
+    
+    const uword N = p.get_n_nonzero();
+    
+    for(uword i=0; i < N; ++i)  { acc_mem[it.row()] += (*it); ++it; }
     
     acc /= T(p_n_cols);
     

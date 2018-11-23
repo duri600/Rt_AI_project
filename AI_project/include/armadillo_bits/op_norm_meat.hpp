@@ -1,11 +1,17 @@
-// Copyright (C) 2008-2016 National ICT Australia (NICTA)
+// Copyright 2008-2016 Conrad Sanderson (http://conradsanderson.id.au)
+// Copyright 2008-2016 National ICT Australia (NICTA)
 // 
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-// -------------------------------------------------------------------
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
 // 
-// Written by Conrad Sanderson - http://conradsanderson.id.au
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ------------------------------------------------------------------------
 
 
 //! \addtogroup op_norm
@@ -951,7 +957,8 @@ op_norm::mat_norm_2(const SpProxy<T1>& P, const typename arma_real_only<typename
   
   const SpMat<eT>  C = (A.n_rows <= A.n_cols) ? (A*B) : (B*A);
   
-  const Col<T> eigval = eigs_sym(C, 1);
+  Col<T> eigval;
+  eigs_sym(eigval, C, 1);
   
   return (eigval.n_elem > 0) ? std::sqrt(eigval[0]) : T(0);
   }
@@ -966,22 +973,28 @@ op_norm::mat_norm_2(const SpProxy<T1>& P, const typename arma_cx_only<typename T
   arma_extra_debug_sigprint();
   arma_ignore(junk);
   
-  //typedef typename T1::elem_type eT;
+  typedef typename T1::elem_type eT;
   typedef typename T1::pod_type   T;
   
-  arma_ignore(P);
-  arma_stop_logic_error("norm(): unimplemented norm type for complex sparse matrices");
+  // we're calling eigs_gen(), which currently requires ARPACK
+  #if !defined(ARMA_USE_ARPACK)
+    {
+    arma_stop_logic_error("norm(): use of ARPACK must be enabled for norm of complex matrices");
+    return T(0);
+    }
+  #endif
   
-  return T(0);
+  const unwrap_spmat<typename SpProxy<T1>::stored_type> tmp(P.Q);
   
-  // const unwrap_spmat<typename SpProxy<T1>::stored_type> tmp(P.Q);
-  // 
-  // const SpMat<eT>& A = tmp.M;
-  // const SpMat<eT>  B = trans(A);
-  // 
-  // const SpMat<eT>  C = (A.n_rows <= A.n_cols) ? (A*B) : (B*A);
-  // 
-  // const Col<eT> eigval = eigs_gen(C, 1);
+  const SpMat<eT>& A = tmp.M;
+  const SpMat<eT>  B = trans(A);
+  
+  const SpMat<eT>  C = (A.n_rows <= A.n_cols) ? (A*B) : (B*A);
+  
+  Col<eT> eigval;
+  eigs_gen(eigval, C, 1);
+  
+  return (eigval.n_elem > 0) ? std::sqrt(std::real(eigval[0])) : T(0);
   }
 
 

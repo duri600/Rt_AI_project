@@ -1,11 +1,17 @@
-// Copyright (C) 2008-2016 National ICT Australia (NICTA)
+// Copyright 2008-2016 Conrad Sanderson (http://conradsanderson.id.au)
+// Copyright 2008-2016 National ICT Australia (NICTA)
 // 
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-// -------------------------------------------------------------------
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
 // 
-// Written by Conrad Sanderson - http://conradsanderson.id.au
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ------------------------------------------------------------------------
 
 
 //! \addtogroup Base
@@ -18,8 +24,8 @@ struct Base_inv_yes
   {
   arma_inline const Op<derived,op_inv> i() const;   //!< matrix inverse
   
-  arma_inline const Op<derived,op_inv> i(const bool ) const;   //!< kept only for compatibility with old user code
-  arma_inline const Op<derived,op_inv> i(const char*) const;   //!< kept only for compatibility with old user code
+  arma_deprecated inline const Op<derived,op_inv> i(const bool ) const;   //!< kept only for compatibility with old user code
+  arma_deprecated inline const Op<derived,op_inv> i(const char*) const;   //!< kept only for compatibility with old user code
   };
 
 
@@ -107,11 +113,11 @@ struct Base
   {
   arma_inline const derived& get_ref() const;
   
-  inline void print(                           const std::string extra_text = "") const;
-  inline void print(std::ostream& user_stream, const std::string extra_text = "") const;
+  arma_cold inline void print(                           const std::string extra_text = "") const;
+  arma_cold inline void print(std::ostream& user_stream, const std::string extra_text = "") const;
   
-  inline void raw_print(                           const std::string extra_text = "") const;
-  inline void raw_print(std::ostream& user_stream, const std::string extra_text = "") const;
+  arma_cold inline void raw_print(                           const std::string extra_text = "") const;
+  arma_cold inline void raw_print(std::ostream& user_stream, const std::string extra_text = "") const;
   
   inline arma_warn_unused elem_type min() const;
   inline arma_warn_unused elem_type max() const;
@@ -124,6 +130,18 @@ struct Base
   
   inline arma_warn_unused uword index_min() const;
   inline arma_warn_unused uword index_max() const;
+  
+  inline arma_warn_unused bool is_symmetric() const;
+  inline arma_warn_unused bool is_symmetric(const typename get_pod_type<elem_type>::result tol) const;
+  
+  inline arma_warn_unused bool is_hermitian() const;
+  inline arma_warn_unused bool is_hermitian(const typename get_pod_type<elem_type>::result tol) const;
+  
+  inline arma_warn_unused bool is_empty()  const;
+  inline arma_warn_unused bool is_square() const;
+  inline arma_warn_unused bool is_vec()    const;
+  inline arma_warn_unused bool is_colvec() const;
+  inline arma_warn_unused bool is_rowvec() const;
   };
 
 

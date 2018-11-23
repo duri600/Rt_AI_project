@@ -1,11 +1,17 @@
-// Copyright (C) 2008-2016 National ICT Australia (NICTA)
+// Copyright 2008-2016 Conrad Sanderson (http://conradsanderson.id.au)
+// Copyright 2008-2016 National ICT Australia (NICTA)
 // 
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-// -------------------------------------------------------------------
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
 // 
-// Written by Conrad Sanderson - http://conradsanderson.id.au
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ------------------------------------------------------------------------
 
 
 //! \addtogroup subview_field
@@ -150,28 +156,16 @@ arma_inline
 oT&
 subview_field<oT>::operator[](const uword i)
   {
-  uword index;
+  const uword n_elem_slice = n_rows*n_cols;
   
-  if(n_slices == 1)
-    {
-    const uword in_col = i / n_rows;
-    const uword in_row = i % n_rows;
-      
-    index = (in_col + aux_col1)*f.n_rows + aux_row1 + in_row;
-    }
-  else
-    {
-    const uword n_elem_slice = n_rows*n_cols;
-    
-    const uword in_slice = i / n_elem_slice;
-    const uword offset   = in_slice * n_elem_slice;
-    const uword j        = i - offset;
-    
-    const uword in_col   = j / n_rows;
-    const uword in_row   = j % n_rows;
-    
-    index = (in_slice + aux_slice1)*(f.n_rows*f.n_cols) + (in_col + aux_col1)*f.n_rows + aux_row1 + in_row;
-    }
+  const uword in_slice = i / n_elem_slice;
+  const uword offset   = in_slice * n_elem_slice;
+  const uword j        = i - offset;
+  
+  const uword in_col   = j / n_rows;
+  const uword in_row   = j % n_rows;
+  
+  const uword index = (in_slice + aux_slice1)*(f.n_rows*f.n_cols) + (in_col + aux_col1)*f.n_rows + aux_row1 + in_row;
   
   return *((const_cast< field<oT>& >(f)).mem[index]);
   }
@@ -183,28 +177,16 @@ arma_inline
 const oT&
 subview_field<oT>::operator[](const uword i) const
   {
-  uword index;
+  const uword n_elem_slice = n_rows*n_cols;
   
-  if(n_slices == 1)
-    {
-    const uword in_col = i / n_rows;
-    const uword in_row = i % n_rows;
-      
-    index = (in_col + aux_col1)*f.n_rows + aux_row1 + in_row;
-    }
-  else
-    {
-    const uword n_elem_slice = n_rows*n_cols;
-    
-    const uword in_slice = i / n_elem_slice;
-    const uword offset   = in_slice * n_elem_slice;
-    const uword j        = i - offset;
-    
-    const uword in_col   = j / n_rows;
-    const uword in_row   = j % n_rows;
-    
-    index = (in_slice + aux_slice1)*(f.n_rows*f.n_cols) + (in_col + aux_col1)*f.n_rows + aux_row1 + in_row;
-    }
+  const uword in_slice = i / n_elem_slice;
+  const uword offset   = in_slice * n_elem_slice;
+  const uword j        = i - offset;
+  
+  const uword in_col   = j / n_rows;
+  const uword in_row   = j % n_rows;
+  
+  const uword index = (in_slice + aux_slice1)*(f.n_rows*f.n_cols) + (in_col + aux_col1)*f.n_rows + aux_row1 + in_row;
   
   return *(f.mem[index]);
   }
@@ -240,11 +222,7 @@ arma_inline
 oT&
 subview_field<oT>::operator()(const uword in_row, const uword in_col)
   {
-  arma_debug_check( ((in_row >= n_rows) || (in_col >= n_cols) || (0 >= n_slices)), "subview_field::operator(): index out of bounds" );
-  
-  const uword index = (in_col + aux_col1)*f.n_rows + aux_row1 + in_row;
-  
-  return *((const_cast< field<oT>& >(f)).mem[index]);
+  return operator()(in_row, in_col, 0);
   }
 
 
@@ -254,11 +232,7 @@ arma_inline
 const oT&
 subview_field<oT>::operator()(const uword in_row, const uword in_col) const
   {
-  arma_debug_check( ((in_row >= n_rows) || (in_col >= n_cols) || (0 >= n_slices)), "subview_field::operator(): index out of bounds" );
-  
-  const uword index = (in_col + aux_col1)*f.n_rows + aux_row1 + in_row;
-  
-  return *(f.mem[index]);
+  return operator()(in_row, in_col, 0);
   }
 
 
@@ -296,9 +270,7 @@ arma_inline
 oT&
 subview_field<oT>::at(const uword in_row, const uword in_col)
   {
-  const uword index = (in_col + aux_col1)*f.n_rows + aux_row1 + in_row;
-  
-  return *((const_cast< field<oT>& >(f)).mem[index]);
+  return at(in_row, in_col, 0);
   }
 
 
@@ -308,9 +280,7 @@ arma_inline
 const oT&
 subview_field<oT>::at(const uword in_row, const uword in_col) const
   {
-  const uword index = (in_col + aux_col1)*f.n_rows + aux_row1 + in_row;
-  
-  return *(f.mem[index]);
+  return at(in_row, in_col, 0);
   }
 
 
@@ -406,14 +376,14 @@ subview_field<oT>::print(const std::string extra_text) const
   
   if(extra_text.length() != 0)
     {
-    const std::streamsize orig_width = ARMA_DEFAULT_OSTREAM.width();
+    const std::streamsize orig_width = get_cout_stream().width();
     
-    ARMA_DEFAULT_OSTREAM << extra_text << '\n';
-  
-    ARMA_DEFAULT_OSTREAM.width(orig_width);
+    get_cout_stream() << extra_text << '\n';
+    
+    get_cout_stream().width(orig_width);
     }
   
-  arma_ostream::print(ARMA_DEFAULT_OSTREAM, *this);
+  arma_ostream::print(get_cout_stream(), *this);
   }
 
 
@@ -430,7 +400,7 @@ subview_field<oT>::print(std::ostream& user_stream, const std::string extra_text
     const std::streamsize orig_width = user_stream.width();
     
     user_stream << extra_text << '\n';
-  
+    
     user_stream.width(orig_width);
     }
   

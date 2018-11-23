@@ -1,11 +1,17 @@
-// Copyright (C) 2008-2012 National ICT Australia (NICTA)
+// Copyright 2008-2016 Conrad Sanderson (http://conradsanderson.id.au)
+// Copyright 2008-2016 National ICT Australia (NICTA)
 // 
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-// -------------------------------------------------------------------
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
 // 
-// Written by Conrad Sanderson - http://conradsanderson.id.au
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ------------------------------------------------------------------------
 
 
 //! \addtogroup SpGlue
@@ -21,12 +27,14 @@ class SpGlue : public SpBase<typename T1::elem_type, SpGlue<T1, T2, spglue_type>
   typedef typename T1::elem_type                   elem_type;
   typedef typename get_pod_type<elem_type>::result pod_type;
   
-  static const bool is_row = ( (T1::is_row || T2::is_row) && is_spglue_elem<spglue_type>::value ) || ( (is_spglue_times<spglue_type>::value || is_spglue_times2<spglue_type>::value) ? T1::is_row : false );
-  static const bool is_col = ( (T1::is_col || T2::is_col) && is_spglue_elem<spglue_type>::value ) || ( (is_spglue_times<spglue_type>::value || is_spglue_times2<spglue_type>::value) ? T2::is_col : false );
+  static const bool is_row = ( (T1::is_row || T2::is_row) && is_spglue_elem<spglue_type>::value ) || ( (is_spglue_times<spglue_type>::value) ? T1::is_row : false );
+  static const bool is_col = ( (T1::is_col || T2::is_col) && is_spglue_elem<spglue_type>::value ) || ( (is_spglue_times<spglue_type>::value) ? T2::is_col : false );
   
-  arma_inline  SpGlue(const T1& in_A, const T2& in_B);
-  arma_inline  SpGlue(const T1& in_A, const T2& in_B, const elem_type in_aux);
-  arma_inline ~SpGlue();
+  inline  SpGlue(const T1& in_A, const T2& in_B);
+  inline  SpGlue(const T1& in_A, const T2& in_B, const elem_type in_aux);
+  inline ~SpGlue();
+  
+  arma_inline bool is_alias(const SpMat<elem_type>& X) const;
   
   const T1&       A;    //!< first operand
   const T2&       B;    //!< second operand

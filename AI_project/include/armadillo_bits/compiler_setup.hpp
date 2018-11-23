@@ -1,11 +1,17 @@
-// Copyright (C) 2008-2016 National ICT Australia (NICTA)
+// Copyright 2008-2016 Conrad Sanderson (http://conradsanderson.id.au)
+// Copyright 2008-2016 National ICT Australia (NICTA)
 // 
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-// -------------------------------------------------------------------
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
 // 
-// Written by Conrad Sanderson - http://conradsanderson.id.au
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ------------------------------------------------------------------------
 
 
 
@@ -117,10 +123,15 @@
 #endif
 
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__apple_build_version__)
   #undef  ARMA_BLAS_SDOT_BUG
   #define ARMA_BLAS_SDOT_BUG
-  #undef  ARMA_HAVE_POSIX_MEMALIGN
+  
+  // #undef  ARMA_HAVE_POSIX_MEMALIGN
+  // NOTE: posix_memalign() is available since macOS 10.6 (late 2009 onwards)
+  
+  #undef  ARMA_USE_EXTERN_CXX11_RNG
+  // TODO: thread_local seems to work in Apple clang since Xcode 8 (mid 2016 onwards)
 #endif
 
 
@@ -144,7 +155,7 @@
 #endif
 
 
-#if (defined(__GNUG__) || defined(__GNUC__)) && (defined(__clang__) || defined(__INTEL_COMPILER) || defined(__NVCC__) || defined(__CUDACC__) || defined(__PGI) || defined(__PATHSCALE__))
+#if (defined(__GNUG__) || defined(__GNUC__)) && (defined(__clang__) || defined(__INTEL_COMPILER) || defined(__NVCC__) || defined(__CUDACC__) || defined(__PGI) || defined(__PATHSCALE__) || defined(__ARMCC_VERSION) || defined(__IBMCPP__))
   #undef  ARMA_FAKE_GCC
   #define ARMA_FAKE_GCC
 #endif
@@ -156,12 +167,12 @@
   #define ARMA_GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
   
   #if (ARMA_GCC_VERSION < 40400)
-    #error "*** Need a newer compiler ***"
+    #error "*** newer compiler required ***"
   #endif
   
-  #if (ARMA_GCC_VERSION < 40600)
-    #pragma message ("WARNING: this compiler is OUTDATED and has INCOMPLETE support for the C++ standard;")
-    #pragma message ("WARNING: if something breaks, you get to keep all the pieces.")
+  #if (ARMA_GCC_VERSION < 40800)
+    #undef  ARMA_PRINT_CXX98_WARNING
+    #define ARMA_PRINT_CXX98_WARNING
   #endif
   
   #if ( (ARMA_GCC_VERSION >= 40700) && (ARMA_GCC_VERSION <= 40701) )
@@ -226,12 +237,10 @@
     #define ARMA_HAVE_ISNAN
   #endif
   
-  #undef ARMA_GCC_VERSION
-  
 #endif
 
 
-#if defined(__clang__) && (defined(__INTEL_COMPILER) || defined(__NVCC__) || defined(__CUDACC__) || defined(__PGI) || defined(__PATHSCALE__))
+#if defined(__clang__) && (defined(__INTEL_COMPILER) || defined(__NVCC__) || defined(__CUDACC__) || defined(__PGI) || defined(__PATHSCALE__) || defined(__ARMCC_VERSION) || defined(__IBMCPP__))
   #undef  ARMA_FAKE_CLANG
   #define ARMA_FAKE_CLANG
 #endif
@@ -286,7 +295,10 @@
     #define arma_hot __attribute__((__hot__))
   #endif
   
-  #if __has_attribute(__cold__)
+  #if __has_attribute(__minsize__)
+    #undef  arma_cold
+    #define arma_cold __attribute__((__minsize__))
+  #elif __has_attribute(__cold__)
     #undef  arma_cold
     #define arma_cold __attribute__((__cold__))
   #endif
@@ -294,11 +306,6 @@
   #if defined(__has_builtin) && __has_builtin(__builtin_assume_aligned)
     #undef  ARMA_HAVE_GCC_ASSUME_ALIGNED
     #define ARMA_HAVE_GCC_ASSUME_ALIGNED
-  #endif
-  
-  #if defined(__apple_build_version__)
-    #undef ARMA_USE_EXTERN_CXX11_RNG
-    // TODO: check the status of support for "extern thread_local" in clang shipped with Mac OS X
   #endif
   
   #if !defined(ARMA_USE_CXX11) && (defined(_POSIX_C_SOURCE) && (_POSIX_C_SOURCE >= 200112L))
@@ -314,8 +321,12 @@
 
 #if defined(__INTEL_COMPILER)
   
+  #if (__INTEL_COMPILER == 9999)
+    #error "*** newer compiler required ***"
+  #endif
+  
   #if (__INTEL_COMPILER < 1300)
-    #error "*** Need a newer compiler ***"
+    #error "*** newer compiler required ***"
   #endif
   
   #undef  ARMA_HAVE_GCC_ASSUME_ALIGNED
@@ -335,7 +346,12 @@
 #if defined(_MSC_VER)
   
   #if (_MSC_VER < 1700)
-    #error "*** Need a newer compiler ***"
+    #error "*** newer compiler required ***"
+  #endif
+  
+  #if (_MSC_VER < 1800)
+    #undef  ARMA_PRINT_CXX98_WARNING
+    #define ARMA_PRINT_CXX98_WARNING
   #endif
   
   #if defined(ARMA_USE_CXX11)
@@ -345,12 +361,15 @@
     #endif
   #endif
   
+  #undef  arma_deprecated
+  #define arma_deprecated __declspec(deprecated)
   // #undef  arma_inline
   // #define arma_inline inline __forceinline
   
   #pragma warning(push)
   
   #pragma warning(disable: 4127)  // conditional expression is constant
+  #pragma warning(disable: 4180)  // qualifier has no meaning
   #pragma warning(disable: 4244)  // possible loss of data when converting types
   #pragma warning(disable: 4510)  // default constructor could not be generated
   #pragma warning(disable: 4511)  // copy constructor can't be generated
@@ -367,6 +386,11 @@
   #pragma warning(disable: 4711)  // call was inlined
   #pragma warning(disable: 4714)  // __forceinline can't be inlined
   #pragma warning(disable: 4800)  // value forced to bool
+  
+  #if defined(ARMA_USE_CXX11)
+    #pragma warning(disable: 4519)  // default template args are only allowed on a class template
+  #endif
+  
   
   // #if (_MANAGED == 1) || (_M_CEE == 1)
   //   
@@ -399,7 +423,7 @@
   // http://www.oracle.com/technetwork/server-storage/solarisstudio/documentation/cplusplus-faq-355066.html
   
   #if (__SUNPRO_CC < 0x5100)
-    #error "*** Need a newer compiler ***"
+    #error "*** newer compiler required ***"
   #endif
   
   #if defined(ARMA_USE_CXX11)
@@ -412,7 +436,7 @@
 #endif
 
 
-#if defined(ARMA_USE_CXX11) && defined(__CYGWIN__)
+#if defined(ARMA_USE_CXX11) && defined(__CYGWIN__) && !defined(ARMA_DONT_PRINT_CXX11_WARNING)
   #pragma message ("WARNING: Cygwin may have incomplete support for C++11 features.")
 #endif
 
@@ -423,15 +447,86 @@
 #endif
 
 
-#if defined(ARMA_PRINT_CXX11_WARNING)
+#if defined(ARMA_PRINT_CXX98_WARNING) && !defined(ARMA_DONT_PRINT_CXX98_WARNING)
+  #pragma message ("WARNING: this compiler is OUTDATED and has INCOMPLETE support for the C++ standard;")
+  #pragma message ("WARNING: if something breaks, you get to keep all the pieces.")
+#endif
+
+
+#if defined(ARMA_PRINT_CXX11_WARNING) && !defined(ARMA_DONT_PRINT_CXX11_WARNING)
   #pragma message ("WARNING: use of C++11 features has been enabled,")
   #pragma message ("WARNING: but this compiler has INCOMPLETE support for C++11;")
   #pragma message ("WARNING: if something breaks, you get to keep all the pieces.")
   #pragma message ("WARNING: to forcefully prevent Armadillo from using C++11 features,")
   #pragma message ("WARNING: #define ARMA_DONT_USE_CXX11 before #include <armadillo>")
-
-  #undef ARMA_PRINT_CXX11_WARNING
 #endif
+
+
+#if ( defined(ARMA_USE_OPENMP) && (!defined(_OPENMP) || (defined(_OPENMP) && (_OPENMP < 201107))) )
+  // OpenMP 3.1 required for atomic read and atomic write
+  // OpenMP 3.0 required for parallelisation of loops with unsigned integers
+  #undef  ARMA_USE_OPENMP
+  #undef  ARMA_PRINT_OPENMP_WARNING
+  #define ARMA_PRINT_OPENMP_WARNING
+#endif
+
+
+#if ( (defined(_OPENMP) && (_OPENMP < 201107)) && !defined(ARMA_DONT_USE_OPENMP) )
+  // if the compiler has an ancient version of OpenMP and use of OpenMP hasn't been explicitly disabled,
+  // print a warning to ensure there is no confusion about OpenMP support
+  #undef  ARMA_USE_OPENMP
+  #undef  ARMA_PRINT_OPENMP_WARNING
+  #define ARMA_PRINT_OPENMP_WARNING
+#endif
+
+
+#if defined(ARMA_PRINT_OPENMP_WARNING) && !defined(ARMA_DONT_PRINT_OPENMP_WARNING)
+  #pragma message ("WARNING: use of OpenMP disabled; compiler support for OpenMP 3.1+ not detected")
+#endif
+
+
+#if defined(ARMA_USE_OPENMP) && !defined(ARMA_USE_CXX11)
+  #if (defined(ARMA_GCC_VERSION) && (ARMA_GCC_VERSION >= 50400)) || (defined(__clang__) && !defined(ARMA_FAKE_CLANG))
+    #undef  ARMA_PRINT_OPENMP_CXX11_WARNING
+    #define ARMA_PRINT_OPENMP_CXX11_WARNING
+  #endif
+#endif
+
+
+#if defined(ARMA_PRINT_OPENMP_CXX11_WARNING) && !defined(ARMA_DONT_PRINT_OPENMP_WARNING)
+  #pragma message ("WARNING: support for OpenMP requires C++11/C++14; add -std=c++11 or -std=c++14 to compiler flags")
+#endif
+
+
+#if defined(ARMA_USE_OPENMP) && defined(ARMA_USE_CXX11)
+  #if (defined(ARMA_GCC_VERSION) && (ARMA_GCC_VERSION < 50400))
+    // due to https://gcc.gnu.org/bugzilla/show_bug.cgi?id=57580
+    #undef ARMA_USE_OPENMP
+    #if !defined(ARMA_DONT_PRINT_OPENMP_WARNING)
+      #pragma message ("WARNING: use of OpenMP disabled due to compiler bug in gcc <= 5.3")
+    #endif
+  #endif
+#endif
+
+
+#if defined(ARMA_GCC_VERSION) && (ARMA_GCC_VERSION >= 50400) && !defined(ARMA_USE_CXX11)
+  #if !defined(ARMA_PRINT_CXX11_WARNING) && !defined(ARMA_PRINT_OPENMP_CXX11_WARNING) && !defined(ARMA_DONT_PRINT_CXX11_WARNING)
+    #pragma message ("NOTE: suggest to enable C++14 mode for faster code; add -std=c++14 to compiler flags")
+  #endif
+#endif
+
+
+
+// cleanup
+
+#undef ARMA_FAKE_GCC
+#undef ARMA_FAKE_CLANG
+#undef ARMA_GCC_VERSION
+#undef ARMA_PRINT_CXX98_WARNING
+#undef ARMA_PRINT_CXX11_WARNING
+#undef ARMA_PRINT_OPENMP_WARNING
+#undef ARMA_PRINT_OPENMP_CXX11_WARNING
+
 
 
 #if defined(log2)
@@ -450,3 +545,12 @@
   #pragma message ("WARNING: detected 'min' and/or 'max' macros and undefined them;")
   #pragma message ("WARNING: you may wish to define NOMINMAX before including any windows header")
 #endif
+
+
+
+//
+// handle more stupid macros
+// https://sourceware.org/bugzilla/show_bug.cgi?id=19239
+
+#undef minor
+#undef major

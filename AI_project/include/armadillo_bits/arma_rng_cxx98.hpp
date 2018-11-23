@@ -1,11 +1,17 @@
-// Copyright (C) 2013-2016 National ICT Australia (NICTA)
+// Copyright 2008-2016 Conrad Sanderson (http://conradsanderson.id.au)
+// Copyright 2008-2016 National ICT Australia (NICTA)
 // 
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-// -------------------------------------------------------------------
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
 // 
-// Written by Conrad Sanderson - http://conradsanderson.id.au
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ------------------------------------------------------------------------
 
 
 //! \addtogroup arma_rng_cxx98
@@ -51,6 +57,9 @@ arma_rng_cxx98::randi_val()
   {
   #if (RAND_MAX == 32767)
     {
+    // NOTE: this is a better-than-nothing solution
+    // NOTE: see also arma_rng_cxx98::randi_max_val()
+    
     u32 val1 = u32(std::rand());
     u32 val2 = u32(std::rand());
     
@@ -84,9 +93,9 @@ arma_rng_cxx98::randn_val()
   // http://en.wikipedia.org/wiki/Box-Muller_transformation
   // http://en.wikipedia.org/wiki/Marsaglia_polar_method
   
-  double tmp1;
-  double tmp2;
-  double w;
+  double tmp1 = double(0);
+  double tmp2 = double(0);
+  double w    = double(0);
   
   do
     {
@@ -110,9 +119,9 @@ arma_rng_cxx98::randn_dual_val(eT& out1, eT& out2)
   // make sure we are internally using at least floats
   typedef typename promote_type<eT,float>::result eTp;
   
-  eTp tmp1;
-  eTp tmp2;
-  eTp w;
+  eTp tmp1 = eTp(0);
+  eTp tmp2 = eTp(0);
+  eTp w    = eTp(0);
   
   do
     {

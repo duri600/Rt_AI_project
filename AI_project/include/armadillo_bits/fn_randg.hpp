@@ -1,11 +1,17 @@
-// Copyright (C) 2015-2016 National ICT Australia (NICTA)
+// Copyright 2008-2016 Conrad Sanderson (http://conradsanderson.id.au)
+// Copyright 2008-2016 National ICT Australia (NICTA)
 // 
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-// -------------------------------------------------------------------
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
 // 
-// Written by Conrad Sanderson - http://conradsanderson.id.au
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ------------------------------------------------------------------------
 
 
 //! \addtogroup fn_randg
@@ -24,12 +30,12 @@ randg(const uword n_rows, const uword n_cols, const distr_param& param = distr_p
   
   #if defined(ARMA_USE_CXX11)
     {
-    if(is_Col<obj_type>::value == true)
+    if(is_Col<obj_type>::value)
       {
       arma_debug_check( (n_cols != 1), "randg(): incompatible size" );
       }
     else
-    if(is_Row<obj_type>::value == true)
+    if(is_Row<obj_type>::value)
       {
       arma_debug_check( (n_rows != 1), "randg(): incompatible size" );
       }
@@ -115,7 +121,7 @@ randg(const uword n_elem, const distr_param& param = distr_param(), const arma_e
   arma_ignore(junk1);
   arma_ignore(junk2);
   
-  if(is_Row<obj_type>::value == true)
+  if(is_Row<obj_type>::value)
     {
     return randg<obj_type>(1, n_elem, param);
     }
@@ -158,7 +164,30 @@ randg(const uword n_elem, const distr_param& param = distr_param())
   {
   arma_extra_debug_sigprint();
   
-  return randg<vec>(n_elem, param);
+  return randg<vec>(n_elem, uword(1), param);
+  }
+
+
+
+arma_warn_unused
+inline
+double
+randg(const distr_param& param = distr_param())
+  {
+  arma_extra_debug_sigprint();
+  
+  return as_scalar( randg<vec>(uword(1), uword(1), param) );
+  }
+
+
+
+template<typename eT>
+arma_warn_unused
+inline
+typename arma_real_or_cx_only<eT>::result
+randg(const distr_param& param = distr_param())
+  {
+  return eT( as_scalar( randg< Col<eT> >(uword(1), uword(1), param) ) );
   }
 
 

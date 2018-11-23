@@ -1,12 +1,17 @@
-// Copyright (C) 2008-2016 National ICT Australia (NICTA)
+// Copyright 2008-2016 Conrad Sanderson (http://conradsanderson.id.au)
+// Copyright 2008-2016 National ICT Australia (NICTA)
 // 
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-// -------------------------------------------------------------------
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
 // 
-// Written by Conrad Sanderson - http://conradsanderson.id.au
-// Written by Ryan Curtin
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ------------------------------------------------------------------------
 
 
 //! \addtogroup Mat
@@ -24,11 +29,8 @@ Mat<eT>::~Mat()
     memory::release( access::rw(mem) );
     }
   
-  if(arma_config::debug == true)
-    {
-    // try to expose buggy user code that accesses deleted objects
-    access::rw(mem) = 0;
-    }
+  // try to expose buggy user code that accesses deleted objects
+  if(arma_config::debug)  { access::rw(mem) = 0; }
   
   arma_type_check(( is_supported_elem_type<eT>::value == false ));
   }
@@ -345,6 +347,7 @@ Mat<eT>::init_warm(uword in_n_rows, uword in_n_cols)
 //! create the matrix from a textual description
 template<typename eT>
 inline
+arma_cold
 Mat<eT>::Mat(const char* text)
   : n_rows(0)
   , n_cols(0)
@@ -363,7 +366,8 @@ Mat<eT>::Mat(const char* text)
 //! create the matrix from a textual description
 template<typename eT>
 inline
-const Mat<eT>&
+arma_cold
+Mat<eT>&
 Mat<eT>::operator=(const char* text)
   {
   arma_extra_debug_sigprint();
@@ -377,6 +381,7 @@ Mat<eT>::operator=(const char* text)
 //! create the matrix from a textual description
 template<typename eT>
 inline
+arma_cold
 Mat<eT>::Mat(const std::string& text)
   : n_rows(0)
   , n_cols(0)
@@ -395,7 +400,8 @@ Mat<eT>::Mat(const std::string& text)
 //! create the matrix from a textual description
 template<typename eT>
 inline
-const Mat<eT>&
+arma_cold
+Mat<eT>&
 Mat<eT>::operator=(const std::string& text)
   {
   arma_extra_debug_sigprint();
@@ -408,7 +414,8 @@ Mat<eT>::operator=(const std::string& text)
 
 //! internal function to create the matrix from a textual description
 template<typename eT>
-inline 
+inline
+arma_cold
 void
 Mat<eT>::init(const std::string& text_orig)
   {
@@ -428,12 +435,14 @@ Mat<eT>::init(const std::string& text_orig)
   uword t_n_rows = 0;
   uword t_n_cols = 0;
   
-  bool t_n_cols_found = false;
+  bool has_semicolon = false;
+  bool has_token     = false;
   
   std::string token;
   
   std::string::size_type line_start = 0;
-  std::string::size_type   line_end = 0;
+  std::string::size_type line_end   = 0;
+  std::string::size_type line_len   = 0;
   
   std::stringstream line_stream;
   
@@ -443,44 +452,50 @@ Mat<eT>::init(const std::string& text_orig)
     
     if(line_end == std::string::npos)
       {
-      line_end = text.length()-1;
+      has_semicolon = false;
+      line_end      = text.length()-1;
+      line_len      = line_end - line_start + 1;
       }
-    
-    std::string::size_type line_len = line_end - line_start + 1;
+    else
+      {
+      has_semicolon = true;
+      line_len      = line_end - line_start;  // omit the ';' character
+      }
     
     line_stream.clear();
     line_stream.str( text.substr(line_start,line_len) );
     
+    has_token = false;
+    
     uword line_n_cols = 0;
-    while(line_stream >> token)
+    
+    while(line_stream >> token)  { has_token = true; ++line_n_cols; }
+    
+    if(t_n_rows == 0)
       {
-      ++line_n_cols;
+      t_n_cols = line_n_cols;
+      }
+    else
+      {
+      if(has_semicolon || has_token)  { arma_check( (line_n_cols != t_n_cols), "Mat::init(): inconsistent number of columns in given string"); }
       }
     
-    if(line_n_cols > 0)
-      {
-      if(t_n_cols_found == false)
-        {
-        t_n_cols       = line_n_cols;
-        t_n_cols_found = true;
-        }
-      else
-        {
-        arma_check( (line_n_cols != t_n_cols), "Mat::init(): inconsistent number of columns in given string");
-        }
-      
-      ++t_n_rows;
-      }
-      
+    ++t_n_rows;
+    
     line_start = line_end+1;
     }
   
+  // if the last line was empty, ignore it
+  if( (has_semicolon == false) && (has_token == false) && (t_n_rows >= 1) )  { --t_n_rows; }
   
-  Mat<eT>& x = *this;
+  Mat<eT>& x = (*this);
   x.set_size(t_n_rows, t_n_cols);
+  
+  if(x.is_empty())  { return; }
   
   line_start = 0;
   line_end   = 0;
+  line_len   = 0;
   
   uword urow = 0;
   
@@ -491,25 +506,20 @@ Mat<eT>::init(const std::string& text_orig)
     if(line_end == std::string::npos)
       {
       line_end = text.length()-1;
+      line_len = line_end - line_start + 1;
       }
-    
-    std::string::size_type line_len = line_end - line_start + 1;
+    else
+      {
+      line_len = line_end - line_start;  // omit the ';' character
+      }
     
     line_stream.clear();
     line_stream.str( text.substr(line_start,line_len) );
     
-//     uword ucol = 0;
-//     while(line_stream >> token)
-//       {
-//       x.at(urow,ucol) = strtod(token.c_str(), 0);
-//       ++ucol;
-//       }
-    
     uword ucol = 0;
-    eT val;
-    while(line_stream >> val)
+    while(line_stream >> token)
       {
-      x(urow,ucol) = val;
+      diskio::convert_token( x.at(urow,ucol), token );
       ++ucol;
       }
     
@@ -546,7 +556,7 @@ Mat<eT>::Mat(const std::vector<eT>& x)
 //! create the matrix from std::vector
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const std::vector<eT>& x)
   {
   arma_extra_debug_sigprint();
@@ -584,7 +594,7 @@ Mat<eT>::operator=(const std::vector<eT>& x)
   
   template<typename eT>
   inline
-  const Mat<eT>&
+  Mat<eT>&
   Mat<eT>::operator=(const std::initializer_list<eT>& list)
     {
     arma_extra_debug_sigprint();
@@ -615,7 +625,7 @@ Mat<eT>::operator=(const std::vector<eT>& x)
   
   template<typename eT>
   inline
-  const Mat<eT>&
+  Mat<eT>&
   Mat<eT>::operator=(const std::initializer_list< std::initializer_list<eT> >& list)
     {
     arma_extra_debug_sigprint();
@@ -670,7 +680,7 @@ Mat<eT>::operator=(const std::vector<eT>& x)
   
   template<typename eT>
   inline
-  const Mat<eT>&
+  Mat<eT>&
   Mat<eT>::operator=(Mat<eT>&& X)
     {
     arma_extra_debug_sigprint(arma_str::format("this = %x   X = %x") % this % &X);
@@ -695,8 +705,8 @@ Mat<eT>::operator=(const std::vector<eT>& x)
 //! Set the matrix to be equal to the specified scalar.
 //! NOTE: the size of the matrix will be 1x1
 template<typename eT>
-arma_inline
-const Mat<eT>&
+inline
+Mat<eT>&
 Mat<eT>::operator=(const eT val)
   {
   arma_extra_debug_sigprint();
@@ -710,8 +720,8 @@ Mat<eT>::operator=(const eT val)
 
 //! In-place addition of a scalar to all elements of the matrix
 template<typename eT>
-arma_inline
-const Mat<eT>&
+inline
+Mat<eT>&
 Mat<eT>::operator+=(const eT val)
   {
   arma_extra_debug_sigprint();
@@ -725,8 +735,8 @@ Mat<eT>::operator+=(const eT val)
 
 //! In-place subtraction of a scalar from all elements of the matrix
 template<typename eT>
-arma_inline
-const Mat<eT>&
+inline
+Mat<eT>&
 Mat<eT>::operator-=(const eT val)
   {
   arma_extra_debug_sigprint();
@@ -740,8 +750,8 @@ Mat<eT>::operator-=(const eT val)
 
 //! In-place multiplication of all elements of the matrix with a scalar
 template<typename eT>
-arma_inline
-const Mat<eT>&
+inline
+Mat<eT>&
 Mat<eT>::operator*=(const eT val)
   {
   arma_extra_debug_sigprint();
@@ -755,8 +765,8 @@ Mat<eT>::operator*=(const eT val)
 
 //! In-place division of all elements of the matrix with a scalar
 template<typename eT>
-arma_inline
-const Mat<eT>&
+inline
+Mat<eT>&
 Mat<eT>::operator/=(const eT val)
   {
   arma_extra_debug_sigprint();
@@ -791,7 +801,7 @@ Mat<eT>::Mat(const Mat<eT>& in_mat)
 //! construct a matrix from a given matrix
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const Mat<eT>& in_mat)
   {
   arma_extra_debug_sigprint(arma_str::format("this = %x   in_mat = %x") % this % &in_mat);
@@ -1214,7 +1224,7 @@ Mat<eT>::Mat(eT* aux_mem, const uword aux_n_rows, const uword aux_n_cols, const 
   {
   arma_extra_debug_sigprint_this(this);
   
-  if(copy_aux_mem == true)
+  if(copy_aux_mem)
     {
     init_cold();
     
@@ -1268,7 +1278,7 @@ Mat<eT>::Mat(const char junk, const eT* aux_mem, const uword aux_n_rows, const u
 //! in-place matrix addition
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const Mat<eT>& m)
   {
   arma_extra_debug_sigprint();
@@ -1285,7 +1295,7 @@ Mat<eT>::operator+=(const Mat<eT>& m)
 //! in-place matrix subtraction
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const Mat<eT>& m)
   {
   arma_extra_debug_sigprint();
@@ -1302,7 +1312,7 @@ Mat<eT>::operator-=(const Mat<eT>& m)
 //! in-place matrix multiplication
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const Mat<eT>& m)
   {
   arma_extra_debug_sigprint();
@@ -1317,7 +1327,7 @@ Mat<eT>::operator*=(const Mat<eT>& m)
 //! in-place element-wise matrix multiplication
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const Mat<eT>& m)
   {
   arma_extra_debug_sigprint();
@@ -1334,7 +1344,7 @@ Mat<eT>::operator%=(const Mat<eT>& m)
 //! in-place element-wise matrix division
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const Mat<eT>& m)
   {
   arma_extra_debug_sigprint();
@@ -1369,7 +1379,7 @@ Mat<eT>::Mat(const BaseCube<eT,T1>& X)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const BaseCube<eT,T1>& X)
   {
   arma_extra_debug_sigprint();
@@ -1456,7 +1466,7 @@ Mat<eT>::operator=(const BaseCube<eT,T1>& X)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const BaseCube<eT,T1>& X)
   {
   arma_extra_debug_sigprint();
@@ -1537,7 +1547,7 @@ Mat<eT>::operator+=(const BaseCube<eT,T1>& X)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const BaseCube<eT,T1>& X)
   {
   arma_extra_debug_sigprint();
@@ -1618,7 +1628,7 @@ Mat<eT>::operator-=(const BaseCube<eT,T1>& X)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const BaseCube<eT,T1>& X)
   {
   arma_extra_debug_sigprint();
@@ -1635,7 +1645,7 @@ Mat<eT>::operator*=(const BaseCube<eT,T1>& X)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const BaseCube<eT,T1>& X)
   {
   arma_extra_debug_sigprint();
@@ -1716,7 +1726,7 @@ Mat<eT>::operator%=(const BaseCube<eT,T1>& X)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const BaseCube<eT,T1>& X)
   {
   arma_extra_debug_sigprint();
@@ -1866,7 +1876,7 @@ Mat<eT>::Mat(const subview<eT>& X)
 //! construct a matrix from subview (e.g. construct a matrix from a delayed submatrix operation)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const subview<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -1893,7 +1903,7 @@ Mat<eT>::operator=(const subview<eT>& X)
 //! in-place matrix addition (using a submatrix on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const subview<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -1907,7 +1917,7 @@ Mat<eT>::operator+=(const subview<eT>& X)
 //! in-place matrix subtraction (using a submatrix on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const subview<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -1922,7 +1932,7 @@ Mat<eT>::operator-=(const subview<eT>& X)
 //! in-place matrix mutiplication (using a submatrix on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const subview<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -1937,7 +1947,7 @@ Mat<eT>::operator*=(const subview<eT>& X)
 //! in-place element-wise matrix mutiplication (using a submatrix on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const subview<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -1952,7 +1962,7 @@ Mat<eT>::operator%=(const subview<eT>& X)
 //! in-place element-wise matrix division (using a submatrix on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const subview<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -2062,7 +2072,7 @@ Mat<eT>::Mat(const subview_cube<eT>& x)
 //! construct a matrix from a subview_cube instance
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const subview_cube<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -2077,7 +2087,7 @@ Mat<eT>::operator=(const subview_cube<eT>& X)
 //! in-place matrix addition (using a single-slice subcube on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const subview_cube<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -2092,7 +2102,7 @@ Mat<eT>::operator+=(const subview_cube<eT>& X)
 //! in-place matrix subtraction (using a single-slice subcube on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const subview_cube<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -2107,7 +2117,7 @@ Mat<eT>::operator-=(const subview_cube<eT>& X)
 //! in-place matrix mutiplication (using a single-slice subcube on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const subview_cube<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -2123,7 +2133,7 @@ Mat<eT>::operator*=(const subview_cube<eT>& X)
 //! in-place element-wise matrix mutiplication (using a single-slice subcube on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const subview_cube<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -2138,7 +2148,7 @@ Mat<eT>::operator%=(const subview_cube<eT>& X)
 //! in-place element-wise matrix division (using a single-slice subcube on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const subview_cube<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -2173,7 +2183,7 @@ Mat<eT>::Mat(const diagview<eT>& X)
 //! construct a matrix from diagview (e.g. construct a matrix from a delayed diag operation)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const diagview<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -2201,7 +2211,7 @@ Mat<eT>::operator=(const diagview<eT>& X)
 //! in-place matrix addition (using a diagview on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const diagview<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -2216,7 +2226,7 @@ Mat<eT>::operator+=(const diagview<eT>& X)
 //! in-place matrix subtraction (using a diagview on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const diagview<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -2231,7 +2241,7 @@ Mat<eT>::operator-=(const diagview<eT>& X)
 //! in-place matrix mutiplication (using a diagview on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const diagview<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -2246,7 +2256,7 @@ Mat<eT>::operator*=(const diagview<eT>& X)
 //! in-place element-wise matrix mutiplication (using a diagview on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const diagview<eT>& X)
   {
   arma_extra_debug_sigprint();
@@ -2261,127 +2271,12 @@ Mat<eT>::operator%=(const diagview<eT>& X)
 //! in-place element-wise matrix division (using a diagview on the right-hand-side)
 template<typename eT>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const diagview<eT>& X)
   {
   arma_extra_debug_sigprint();
   
   diagview<eT>::div_inplace(*this, X);
-  
-  return *this;
-  }
-
-
-
-template<typename eT>
-inline
-Mat<eT>::Mat(const spdiagview<eT>& X)
-  : n_rows(X.n_rows)
-  , n_cols(X.n_cols)
-  , n_elem(X.n_elem)
-  , vec_state(0)
-  , mem_state(0)
-  , mem()
-  {
-  arma_extra_debug_sigprint_this(this);
-  
-  init_cold();
-  
-  spdiagview<eT>::extract(*this, X);
-  }
-
-
-
-template<typename eT>
-inline
-const Mat<eT>&
-Mat<eT>::operator=(const spdiagview<eT>& X)
-  {
-  arma_extra_debug_sigprint();
-  
-  init_warm(X.n_rows, X.n_cols);
-  
-  spdiagview<eT>::extract(*this, X);
-  
-  return *this;
-  }
-
-
-
-template<typename eT>
-inline
-const Mat<eT>&
-Mat<eT>::operator+=(const spdiagview<eT>& X)
-  {
-  arma_extra_debug_sigprint();
-  
-  const Mat<eT> tmp(X);
-  
-  (*this).operator+=(tmp);
-  
-  return *this;
-  }
-
-
-
-template<typename eT>
-inline
-const Mat<eT>&
-Mat<eT>::operator-=(const spdiagview<eT>& X)
-  {
-  arma_extra_debug_sigprint();
-  
-  const Mat<eT> tmp(X);
-  
-  (*this).operator-=(tmp);
-  
-  return *this;
-  }
-
-
-
-template<typename eT>
-inline
-const Mat<eT>&
-Mat<eT>::operator*=(const spdiagview<eT>& X)
-  {
-  arma_extra_debug_sigprint();
-  
-  const Mat<eT> tmp(X);
-  
-  (*this).operator*=(tmp);
-  
-  return *this;
-  }
-
-
-
-template<typename eT>
-inline
-const Mat<eT>&
-Mat<eT>::operator%=(const spdiagview<eT>& X)
-  {
-  arma_extra_debug_sigprint();
-  
-  const Mat<eT> tmp(X);
-  
-  (*this).operator%=(tmp);
-  
-  return *this;
-  }
-
-
-
-template<typename eT>
-inline
-const Mat<eT>&
-Mat<eT>::operator/=(const spdiagview<eT>& X)
-  {
-  arma_extra_debug_sigprint();
-  
-  const Mat<eT> tmp(X);
-  
-  (*this).operator/=(tmp);
   
   return *this;
   }
@@ -2409,7 +2304,7 @@ Mat<eT>::Mat(const subview_elem1<eT,T1>& X)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const subview_elem1<eT,T1>& X)
   {
   arma_extra_debug_sigprint();
@@ -2424,7 +2319,7 @@ Mat<eT>::operator=(const subview_elem1<eT,T1>& X)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const subview_elem1<eT,T1>& X)
   {
   arma_extra_debug_sigprint();
@@ -2439,7 +2334,7 @@ Mat<eT>::operator+=(const subview_elem1<eT,T1>& X)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const subview_elem1<eT,T1>& X)
   {
   arma_extra_debug_sigprint();
@@ -2454,7 +2349,7 @@ Mat<eT>::operator-=(const subview_elem1<eT,T1>& X)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const subview_elem1<eT,T1>& X)
   {
   arma_extra_debug_sigprint();
@@ -2469,7 +2364,7 @@ Mat<eT>::operator*=(const subview_elem1<eT,T1>& X)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const subview_elem1<eT,T1>& X)
   {
   arma_extra_debug_sigprint();
@@ -2484,7 +2379,7 @@ Mat<eT>::operator%=(const subview_elem1<eT,T1>& X)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const subview_elem1<eT,T1>& X)
   {
   arma_extra_debug_sigprint();
@@ -2517,7 +2412,7 @@ Mat<eT>::Mat(const subview_elem2<eT,T1,T2>& X)
 template<typename eT>
 template<typename T1, typename T2>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const subview_elem2<eT,T1,T2>& X)
   {
   arma_extra_debug_sigprint();
@@ -2532,7 +2427,7 @@ Mat<eT>::operator=(const subview_elem2<eT,T1,T2>& X)
 template<typename eT>
 template<typename T1, typename T2>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const subview_elem2<eT,T1,T2>& X)
   {
   arma_extra_debug_sigprint();
@@ -2547,7 +2442,7 @@ Mat<eT>::operator+=(const subview_elem2<eT,T1,T2>& X)
 template<typename eT>
 template<typename T1, typename T2>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const subview_elem2<eT,T1,T2>& X)
   {
   arma_extra_debug_sigprint();
@@ -2562,7 +2457,7 @@ Mat<eT>::operator-=(const subview_elem2<eT,T1,T2>& X)
 template<typename eT>
 template<typename T1, typename T2>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const subview_elem2<eT,T1,T2>& X)
   {
   arma_extra_debug_sigprint();
@@ -2577,7 +2472,7 @@ Mat<eT>::operator*=(const subview_elem2<eT,T1,T2>& X)
 template<typename eT>
 template<typename T1, typename T2>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const subview_elem2<eT,T1,T2>& X)
   {
   arma_extra_debug_sigprint();
@@ -2592,7 +2487,7 @@ Mat<eT>::operator%=(const subview_elem2<eT,T1,T2>& X)
 template<typename eT>
 template<typename T1, typename T2>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const subview_elem2<eT,T1,T2>& X)
   {
   arma_extra_debug_sigprint();
@@ -2642,7 +2537,7 @@ Mat<eT>::Mat(const SpBase<eT, T1>& m)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const SpBase<eT, T1>& m)
   {
   arma_extra_debug_sigprint();
@@ -2670,7 +2565,7 @@ Mat<eT>::operator=(const SpBase<eT, T1>& m)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const SpBase<eT, T1>& m)
   {
   arma_extra_debug_sigprint();
@@ -2696,7 +2591,7 @@ Mat<eT>::operator+=(const SpBase<eT, T1>& m)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const SpBase<eT, T1>& m)
   {
   arma_extra_debug_sigprint();
@@ -2722,7 +2617,7 @@ Mat<eT>::operator-=(const SpBase<eT, T1>& m)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const SpBase<eT, T1>& m)
   {
   arma_extra_debug_sigprint();
@@ -2739,7 +2634,7 @@ Mat<eT>::operator*=(const SpBase<eT, T1>& m)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const SpBase<eT, T1>& m)
   {
   arma_extra_debug_sigprint();
@@ -2777,7 +2672,7 @@ Mat<eT>::operator%=(const SpBase<eT, T1>& m)
 template<typename eT>
 template<typename T1>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const SpBase<eT, T1>& m)
   {
   arma_extra_debug_sigprint();
@@ -2793,6 +2688,121 @@ Mat<eT>::operator/=(const SpBase<eT, T1>& m)
     {
     at(r, c) /= p.at(r, c);
     }
+  
+  return *this;
+  }
+
+
+
+template<typename eT>
+inline
+Mat<eT>::Mat(const spdiagview<eT>& X)
+  : n_rows(X.n_rows)
+  , n_cols(X.n_cols)
+  , n_elem(X.n_elem)
+  , vec_state(0)
+  , mem_state(0)
+  , mem()
+  {
+  arma_extra_debug_sigprint_this(this);
+  
+  init_cold();
+  
+  spdiagview<eT>::extract(*this, X);
+  }
+
+
+
+template<typename eT>
+inline
+Mat<eT>&
+Mat<eT>::operator=(const spdiagview<eT>& X)
+  {
+  arma_extra_debug_sigprint();
+  
+  init_warm(X.n_rows, X.n_cols);
+  
+  spdiagview<eT>::extract(*this, X);
+  
+  return *this;
+  }
+
+
+
+template<typename eT>
+inline
+Mat<eT>&
+Mat<eT>::operator+=(const spdiagview<eT>& X)
+  {
+  arma_extra_debug_sigprint();
+  
+  const Mat<eT> tmp(X);
+  
+  (*this).operator+=(tmp);
+  
+  return *this;
+  }
+
+
+
+template<typename eT>
+inline
+Mat<eT>&
+Mat<eT>::operator-=(const spdiagview<eT>& X)
+  {
+  arma_extra_debug_sigprint();
+  
+  const Mat<eT> tmp(X);
+  
+  (*this).operator-=(tmp);
+  
+  return *this;
+  }
+
+
+
+template<typename eT>
+inline
+Mat<eT>&
+Mat<eT>::operator*=(const spdiagview<eT>& X)
+  {
+  arma_extra_debug_sigprint();
+  
+  const Mat<eT> tmp(X);
+  
+  (*this).operator*=(tmp);
+  
+  return *this;
+  }
+
+
+
+template<typename eT>
+inline
+Mat<eT>&
+Mat<eT>::operator%=(const spdiagview<eT>& X)
+  {
+  arma_extra_debug_sigprint();
+  
+  const Mat<eT> tmp(X);
+  
+  (*this).operator%=(tmp);
+  
+  return *this;
+  }
+
+
+
+template<typename eT>
+inline
+Mat<eT>&
+Mat<eT>::operator/=(const spdiagview<eT>& X)
+  {
+  arma_extra_debug_sigprint();
+  
+  const Mat<eT> tmp(X);
+  
+  (*this).operator/=(tmp);
   
   return *this;
   }
@@ -3877,7 +3887,7 @@ Mat<eT>::each_row(const Base<uword, T1>& indices) const
     
     for(uword ii=0; ii < n_cols; ++ii)
       {
-      const Col<eT> tmp(colptr(ii), n_rows, false, true);
+      const Col<eT> tmp(const_cast<eT*>(colptr(ii)), n_rows, false, true);
       F(tmp);
       }
     
@@ -4242,7 +4252,7 @@ Mat<eT>::insert_rows(const uword row_num, const uword N, const bool set_to_zero)
       out.rows(row_num + N, t_n_rows + N - 1) = rows(row_num, t_n_rows-1);
       }
     
-    if(set_to_zero == true)
+    if(set_to_zero)
       {
       out.rows(row_num, row_num + N - 1).zeros();
       }
@@ -4285,7 +4295,7 @@ Mat<eT>::insert_cols(const uword col_num, const uword N, const bool set_to_zero)
       out.cols(col_num + N, t_n_cols + N - 1) = cols(col_num, t_n_cols-1);
       }
     
-    if(set_to_zero == true)
+    if(set_to_zero)
       {
       out.cols(col_num, col_num + N - 1).zeros();
       }
@@ -4467,7 +4477,7 @@ Mat<eT>::Mat(const Gen<T1, gen_type>& X)
 template<typename eT>
 template<typename T1, typename gen_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const Gen<T1, gen_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4486,7 +4496,7 @@ Mat<eT>::operator=(const Gen<T1, gen_type>& X)
 template<typename eT>
 template<typename T1, typename gen_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const Gen<T1, gen_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4503,7 +4513,7 @@ Mat<eT>::operator+=(const Gen<T1, gen_type>& X)
 template<typename eT>
 template<typename T1, typename gen_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const Gen<T1, gen_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4520,7 +4530,7 @@ Mat<eT>::operator-=(const Gen<T1, gen_type>& X)
 template<typename eT>
 template<typename T1, typename gen_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const Gen<T1, gen_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4537,7 +4547,7 @@ Mat<eT>::operator*=(const Gen<T1, gen_type>& X)
 template<typename eT>
 template<typename T1, typename gen_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const Gen<T1, gen_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4554,7 +4564,7 @@ Mat<eT>::operator%=(const Gen<T1, gen_type>& X)
 template<typename eT>
 template<typename T1, typename gen_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const Gen<T1, gen_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4593,7 +4603,7 @@ Mat<eT>::Mat(const Op<T1, op_type>& X)
 template<typename eT>
 template<typename T1, typename op_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const Op<T1, op_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4611,7 +4621,7 @@ Mat<eT>::operator=(const Op<T1, op_type>& X)
 template<typename eT>
 template<typename T1, typename op_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const Op<T1, op_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4629,7 +4639,7 @@ Mat<eT>::operator+=(const Op<T1, op_type>& X)
 template<typename eT>
 template<typename T1, typename op_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const Op<T1, op_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4647,7 +4657,7 @@ Mat<eT>::operator-=(const Op<T1, op_type>& X)
 template<typename eT>
 template<typename T1, typename op_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const Op<T1, op_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4665,7 +4675,7 @@ Mat<eT>::operator*=(const Op<T1, op_type>& X)
 template<typename eT>
 template<typename T1, typename op_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const Op<T1, op_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4683,7 +4693,7 @@ Mat<eT>::operator%=(const Op<T1, op_type>& X)
 template<typename eT>
 template<typename T1, typename op_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const Op<T1, op_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4724,7 +4734,7 @@ Mat<eT>::Mat(const eOp<T1, eop_type>& X)
 template<typename eT>
 template<typename T1, typename eop_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const eOp<T1, eop_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4756,7 +4766,7 @@ Mat<eT>::operator=(const eOp<T1, eop_type>& X)
 template<typename eT>
 template<typename T1, typename eop_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const eOp<T1, eop_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4773,7 +4783,7 @@ Mat<eT>::operator+=(const eOp<T1, eop_type>& X)
 template<typename eT>
 template<typename T1, typename eop_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const eOp<T1, eop_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4790,7 +4800,7 @@ Mat<eT>::operator-=(const eOp<T1, eop_type>& X)
 template<typename eT>
 template<typename T1, typename eop_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const eOp<T1, eop_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4807,7 +4817,7 @@ Mat<eT>::operator*=(const eOp<T1, eop_type>& X)
 template<typename eT>
 template<typename T1, typename eop_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const eOp<T1, eop_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4824,7 +4834,7 @@ Mat<eT>::operator%=(const eOp<T1, eop_type>& X)
 template<typename eT>
 template<typename T1, typename eop_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const eOp<T1, eop_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4838,7 +4848,6 @@ Mat<eT>::operator/=(const eOp<T1, eop_type>& X)
 
 
 
-//! EXPERIMENTAL
 template<typename eT>
 template<typename T1, typename op_type>
 inline
@@ -4857,11 +4866,10 @@ Mat<eT>::Mat(const mtOp<eT, T1, op_type>& X)
 
 
 
-//! EXPERIMENTAL
 template<typename eT>
 template<typename T1, typename op_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const mtOp<eT, T1, op_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4873,11 +4881,10 @@ Mat<eT>::operator=(const mtOp<eT, T1, op_type>& X)
 
 
 
-//! EXPERIMENTAL
 template<typename eT>
 template<typename T1, typename op_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const mtOp<eT, T1, op_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4889,11 +4896,10 @@ Mat<eT>::operator+=(const mtOp<eT, T1, op_type>& X)
 
 
 
-//! EXPERIMENTAL
 template<typename eT>
 template<typename T1, typename op_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const mtOp<eT, T1, op_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4905,11 +4911,10 @@ Mat<eT>::operator-=(const mtOp<eT, T1, op_type>& X)
 
 
 
-//! EXPERIMENTAL
 template<typename eT>
 template<typename T1, typename op_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const mtOp<eT, T1, op_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4921,11 +4926,10 @@ Mat<eT>::operator*=(const mtOp<eT, T1, op_type>& X)
 
 
 
-//! EXPERIMENTAL
 template<typename eT>
 template<typename T1, typename op_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const mtOp<eT, T1, op_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4937,11 +4941,10 @@ Mat<eT>::operator%=(const mtOp<eT, T1, op_type>& X)
 
 
 
-//! EXPERIMENTAL
 template<typename eT>
 template<typename T1, typename op_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const mtOp<eT, T1, op_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4979,7 +4982,7 @@ Mat<eT>::Mat(const Glue<T1, T2, glue_type>& X)
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const Glue<T1, T2, glue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -4998,7 +5001,7 @@ Mat<eT>::operator=(const Glue<T1, T2, glue_type>& X)
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const Glue<T1, T2, glue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5017,7 +5020,7 @@ Mat<eT>::operator+=(const Glue<T1, T2, glue_type>& X)
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const Glue<T1, T2, glue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5036,7 +5039,7 @@ Mat<eT>::operator-=(const Glue<T1, T2, glue_type>& X)
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const Glue<T1, T2, glue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5055,7 +5058,7 @@ Mat<eT>::operator*=(const Glue<T1, T2, glue_type>& X)
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const Glue<T1, T2, glue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5074,7 +5077,7 @@ Mat<eT>::operator%=(const Glue<T1, T2, glue_type>& X)
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const Glue<T1, T2, glue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5092,7 +5095,7 @@ Mat<eT>::operator/=(const Glue<T1, T2, glue_type>& X)
 template<typename eT>
 template<typename T1, typename T2>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const Glue<T1, T2, glue_times>& X)
   {
   arma_extra_debug_sigprint();
@@ -5107,7 +5110,7 @@ Mat<eT>::operator+=(const Glue<T1, T2, glue_times>& X)
 template<typename eT>
 template<typename T1, typename T2>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const Glue<T1, T2, glue_times>& X)
   {
   arma_extra_debug_sigprint();
@@ -5147,7 +5150,7 @@ Mat<eT>::Mat(const eGlue<T1, T2, eglue_type>& X)
 template<typename eT>
 template<typename T1, typename T2, typename eglue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const eGlue<T1, T2, eglue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5186,7 +5189,7 @@ Mat<eT>::operator=(const eGlue<T1, T2, eglue_type>& X)
 template<typename eT>
 template<typename T1, typename T2, typename eglue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const eGlue<T1, T2, eglue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5205,7 +5208,7 @@ Mat<eT>::operator+=(const eGlue<T1, T2, eglue_type>& X)
 template<typename eT>
 template<typename T1, typename T2, typename eglue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const eGlue<T1, T2, eglue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5223,7 +5226,7 @@ Mat<eT>::operator-=(const eGlue<T1, T2, eglue_type>& X)
 template<typename eT>
 template<typename T1, typename T2, typename eglue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const eGlue<T1, T2, eglue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5240,7 +5243,7 @@ Mat<eT>::operator*=(const eGlue<T1, T2, eglue_type>& X)
 template<typename eT>
 template<typename T1, typename T2, typename eglue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const eGlue<T1, T2, eglue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5257,7 +5260,7 @@ Mat<eT>::operator%=(const eGlue<T1, T2, eglue_type>& X)
 template<typename eT>
 template<typename T1, typename T2, typename eglue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const eGlue<T1, T2, eglue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5271,7 +5274,6 @@ Mat<eT>::operator/=(const eGlue<T1, T2, eglue_type>& X)
 
 
 
-//! EXPERIMENTAL: create a matrix from mtGlue, i.e. run the previously delayed binary operations
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
@@ -5290,11 +5292,10 @@ Mat<eT>::Mat(const mtGlue<eT, T1, T2, glue_type>& X)
 
 
 
-//! EXPERIMENTAL: create a matrix from Glue, i.e. run the previously delayed binary operations
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator=(const mtGlue<eT, T1, T2, glue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5306,11 +5307,10 @@ Mat<eT>::operator=(const mtGlue<eT, T1, T2, glue_type>& X)
 
 
 
-//! EXPERIMENTAL: in-place matrix addition, with the right-hand-side operands having delayed operations
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator+=(const mtGlue<eT, T1, T2, glue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5322,11 +5322,10 @@ Mat<eT>::operator+=(const mtGlue<eT, T1, T2, glue_type>& X)
 
 
 
-//! EXPERIMENTAL: in-place matrix subtraction, with the right-hand-side operands having delayed operations
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator-=(const mtGlue<eT, T1, T2, glue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5338,11 +5337,10 @@ Mat<eT>::operator-=(const mtGlue<eT, T1, T2, glue_type>& X)
 
 
 
-//! EXPERIMENTAL: in-place matrix multiplications, with the right-hand-side operands having delayed operations
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator*=(const mtGlue<eT, T1, T2, glue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5356,11 +5354,10 @@ Mat<eT>::operator*=(const mtGlue<eT, T1, T2, glue_type>& X)
 
 
 
-//! EXPERIMENTAL: in-place matrix element-wise multiplication, with the right-hand-side operands having delayed operations
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator%=(const mtGlue<eT, T1, T2, glue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5372,11 +5369,10 @@ Mat<eT>::operator%=(const mtGlue<eT, T1, T2, glue_type>& X)
 
 
 
-//! EXPERIMENTAL: in-place matrix element-wise division, with the right-hand-side operands having delayed operations
 template<typename eT>
 template<typename T1, typename T2, typename glue_type>
 inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::operator/=(const mtGlue<eT, T1, T2, glue_type>& X)
   {
   arma_extra_debug_sigprint();
@@ -5844,7 +5840,7 @@ Mat<eT>::in_range(const span& x) const
   {
   arma_extra_debug_sigprint();
   
-  if(x.whole == true)
+  if(x.whole)
     {
     return true;
     }
@@ -5879,7 +5875,7 @@ Mat<eT>::in_range(const span& row_span, const uword in_col) const
   {
   arma_extra_debug_sigprint();
   
-  if(row_span.whole == true)
+  if(row_span.whole)
     {
     return (in_col < n_cols);
     }
@@ -5902,7 +5898,7 @@ Mat<eT>::in_range(const uword in_row, const span& col_span) const
   {
   arma_extra_debug_sigprint();
   
-  if(col_span.whole == true)
+  if(col_span.whole)
     {
     return (in_row < n_rows);
     }
@@ -5934,7 +5930,7 @@ Mat<eT>::in_range(const span& row_span, const span& col_span) const
   const bool rows_ok = row_span.whole ? true : ( (in_row1 <= in_row2) && (in_row2 < n_rows) );
   const bool cols_ok = col_span.whole ? true : ( (in_col1 <= in_col2) && (in_col2 < n_cols) );
   
-  return ( (rows_ok == true) && (cols_ok == true) );
+  return ( rows_ok && cols_ok );
   }
 
 
@@ -6013,6 +6009,7 @@ Mat<eT>::memptr() const
 //! the precision and cell width are modified.
 //! on return, the stream's state are restored to their original values.
 template<typename eT>
+arma_cold
 inline
 void
 Mat<eT>::impl_print(const std::string& extra_text) const
@@ -6021,14 +6018,14 @@ Mat<eT>::impl_print(const std::string& extra_text) const
   
   if(extra_text.length() != 0)
     {
-    const std::streamsize orig_width = ARMA_DEFAULT_OSTREAM.width();
+    const std::streamsize orig_width = get_cout_stream().width();
     
-    ARMA_DEFAULT_OSTREAM << extra_text << '\n';
+    get_cout_stream() << extra_text << '\n';
   
-    ARMA_DEFAULT_OSTREAM.width(orig_width);
+    get_cout_stream().width(orig_width);
     }
   
-  arma_ostream::print(ARMA_DEFAULT_OSTREAM, *this, true);
+  arma_ostream::print(get_cout_stream(), *this, true);
   }
 
 
@@ -6038,6 +6035,7 @@ Mat<eT>::impl_print(const std::string& extra_text) const
 //! the precision and cell width are modified.
 //! on return, the stream's state are restored to their original values.
 template<typename eT>
+arma_cold
 inline
 void
 Mat<eT>::impl_print(std::ostream& user_stream, const std::string& extra_text) const
@@ -6063,6 +6061,7 @@ Mat<eT>::impl_print(std::ostream& user_stream, const std::string& extra_text) co
 //! the stream's state are used as is and are not modified
 //! (i.e. the precision and cell width are not modified).
 template<typename eT>
+arma_cold
 inline
 void
 Mat<eT>::impl_raw_print(const std::string& extra_text) const
@@ -6071,14 +6070,14 @@ Mat<eT>::impl_raw_print(const std::string& extra_text) const
   
   if(extra_text.length() != 0)
     {
-    const std::streamsize orig_width = ARMA_DEFAULT_OSTREAM.width();
+    const std::streamsize orig_width = get_cout_stream().width();
     
-    ARMA_DEFAULT_OSTREAM << extra_text << '\n';
+    get_cout_stream() << extra_text << '\n';
   
-    ARMA_DEFAULT_OSTREAM.width(orig_width);
+    get_cout_stream().width(orig_width);
     }
   
-  arma_ostream::print(ARMA_DEFAULT_OSTREAM, *this, false);
+  arma_ostream::print(get_cout_stream(), *this, false);
   }
 
 
@@ -6088,6 +6087,7 @@ Mat<eT>::impl_raw_print(const std::string& extra_text) const
 //! the stream's state are used as is and are not modified.
 //! (i.e. the precision and cell width are not modified).
 template<typename eT>
+arma_cold
 inline
 void
 Mat<eT>::impl_raw_print(std::ostream& user_stream, const std::string& extra_text) const
@@ -6235,7 +6235,7 @@ Mat<eT>::reshape(const SizeMat& s)
 
 
 
-//!< NOTE: don't use this in new code; kept only for compatibility with old code
+//! NOTE: don't use this form; it's deprecated and will be removed
 template<typename eT>
 arma_deprecated
 inline
@@ -6400,9 +6400,22 @@ Mat<eT>::imbue(functor F)
 
 
 
+template<typename eT>
+inline
+const Mat<eT>&
+Mat<eT>::replace(const eT old_val, const eT new_val)
+  {
+  arma_extra_debug_sigprint();
+  
+  arrayops::replace(memptr(), n_elem, old_val, new_val);
+  
+  return *this;
+  }
+
+
+
 //! fill the matrix with the specified value
 template<typename eT>
-arma_hot
 inline
 const Mat<eT>&
 Mat<eT>::fill(const eT val)
@@ -6419,7 +6432,6 @@ Mat<eT>::fill(const eT val)
 //! fill the matrix with the specified value
 template<typename eT>
 template<typename fill_type>
-arma_hot
 inline
 const Mat<eT>&
 Mat<eT>::fill(const fill::fill_class<fill_type>&)
@@ -6724,6 +6736,26 @@ Mat<eT>::reset()
 
 
 template<typename eT>
+inline
+void
+Mat<eT>::soft_reset()
+  {
+  arma_extra_debug_sigprint();
+  
+  // don't change the size if the matrix has a fixed size or is a cube slice
+  if(mem_state <= 1)
+    {
+    reset();
+    }
+  else
+    {
+    fill(Datum<eT>::nan);
+    }
+  }
+
+
+
+template<typename eT>
 template<typename T1>
 inline
 void
@@ -6800,6 +6832,8 @@ Mat<eT>::min(uword& index_of_min_val) const
     {
     arma_debug_check(true, "Mat::min(): object has no elements");
     
+    index_of_min_val = uword(0);
+    
     return Datum<eT>::nan;
     }
   
@@ -6819,6 +6853,8 @@ Mat<eT>::max(uword& index_of_max_val) const
     {
     arma_debug_check(true, "Mat::max(): object has no elements");
     
+    index_of_max_val = uword(0);
+    
     return Datum<eT>::nan;
     }
   
@@ -6837,6 +6873,9 @@ Mat<eT>::min(uword& row_of_min_val, uword& col_of_min_val) const
   if(n_elem == 0)
     {
     arma_debug_check(true, "Mat::min(): object has no elements");
+    
+    row_of_min_val = uword(0);
+    col_of_min_val = uword(0);
     
     return Datum<eT>::nan;
     }
@@ -6864,6 +6903,9 @@ Mat<eT>::max(uword& row_of_max_val, uword& col_of_max_val) const
     {
     arma_debug_check(true, "Mat::max(): object has no elements");
     
+    row_of_max_val = uword(0);
+    col_of_max_val = uword(0);
+    
     return Datum<eT>::nan;
     }
   
@@ -6882,12 +6924,13 @@ Mat<eT>::max(uword& row_of_max_val, uword& col_of_max_val) const
 //! save the matrix to a file
 template<typename eT>
 inline
+arma_cold
 bool
 Mat<eT>::save(const std::string name, const file_type type, const bool print_status) const
   {
   arma_extra_debug_sigprint();
   
-  bool save_okay;
+  bool save_okay = false;
   
   switch(type)
     {
@@ -6910,23 +6953,17 @@ Mat<eT>::save(const std::string name, const file_type type, const bool print_sta
     case arma_binary:
       save_okay = diskio::save_arma_binary(*this, name);
       break;
-      
+    
     case pgm_binary:
       save_okay = diskio::save_pgm_binary(*this, name);
       break;
     
     case hdf5_binary:
-      save_okay = diskio::save_hdf5_binary(*this, name);
+      return (*this).save(hdf5_name(name));
       break;
     
-    case hdf5_binary_trans:
-      {
-      Mat<eT> tmp;
-      
-      op_strans::apply_mat_noalias(tmp, *this);
-      
-      save_okay = diskio::save_hdf5_binary(tmp, name);
-      }
+    case hdf5_binary_trans:  // kept for compatibility with earlier versions of Armadillo
+      return (*this).save(hdf5_name(name, std::string(), hdf5_opts::trans));
       break;
     
     default:
@@ -6941,15 +6978,75 @@ Mat<eT>::save(const std::string name, const file_type type, const bool print_sta
 
 
 
+template<typename eT>
+inline
+arma_cold
+bool
+Mat<eT>::save(const hdf5_name& spec, const file_type type, const bool print_status) const
+  {
+  arma_extra_debug_sigprint();
+  
+  // handling of hdf5_binary_trans kept for compatibility with earlier versions of Armadillo
+  
+  if( (type != hdf5_binary) && (type != hdf5_binary_trans) )
+    {
+    arma_debug_check(true, "Mat::save(): unsupported file type for hdf5_name()");
+    return false;
+    }
+  
+  const bool do_trans = bool(spec.opts.flags & hdf5_opts::flag_trans  ) || (type == hdf5_binary_trans);
+  const bool append   = bool(spec.opts.flags & hdf5_opts::flag_append );
+  const bool replace  = bool(spec.opts.flags & hdf5_opts::flag_replace);
+  
+  if(append && replace)
+    {
+    arma_debug_check(true, "Mat::save(): only one of 'append' or 'replace' options can be used");
+    return false;
+    }
+  
+  bool save_okay = false;
+  std::string err_msg;
+  
+  if(do_trans)
+    {
+    Mat<eT> tmp;
+    
+    op_strans::apply_mat_noalias(tmp, *this);
+    
+    save_okay = diskio::save_hdf5_binary(tmp, spec, err_msg);
+    }
+  else
+    {
+    save_okay = diskio::save_hdf5_binary(*this, spec, err_msg);
+    }
+  
+  if((print_status == true) && (save_okay == false))
+    {
+    if(err_msg.length() > 0)
+      {
+      arma_debug_warn("Mat::save(): ", err_msg, spec.filename);
+      }
+    else
+      {
+      arma_debug_warn("Mat::save(): couldn't write to ", spec.filename);
+      }
+    }
+  
+  return save_okay;
+  }
+
+
+
 //! save the matrix to a stream
 template<typename eT>
 inline
+arma_cold
 bool
 Mat<eT>::save(std::ostream& os, const file_type type, const bool print_status) const
   {
   arma_extra_debug_sigprint();
   
-  bool save_okay;
+  bool save_okay = false;
   
   switch(type)
     {
@@ -6972,7 +7069,7 @@ Mat<eT>::save(std::ostream& os, const file_type type, const bool print_status) c
     case arma_binary:
       save_okay = diskio::save_arma_binary(*this, os);
       break;
-      
+    
     case pgm_binary:
       save_okay = diskio::save_pgm_binary(*this, os);
       break;
@@ -6992,12 +7089,13 @@ Mat<eT>::save(std::ostream& os, const file_type type, const bool print_status) c
 //! load a matrix from a file
 template<typename eT>
 inline
+arma_cold
 bool
 Mat<eT>::load(const std::string name, const file_type type, const bool print_status)
   {
   arma_extra_debug_sigprint();
   
-  bool load_okay;
+  bool load_okay = false;
   std::string err_msg;
   
   switch(type)
@@ -7025,25 +7123,19 @@ Mat<eT>::load(const std::string name, const file_type type, const bool print_sta
     case arma_binary:
       load_okay = diskio::load_arma_binary(*this, name, err_msg);
       break;
-      
+    
     case pgm_binary:
       load_okay = diskio::load_pgm_binary(*this, name, err_msg);
       break;
     
     case hdf5_binary:
-      load_okay = diskio::load_hdf5_binary(*this, name, err_msg);
+      return (*this).load(hdf5_name(name));
       break;
-
-    case hdf5_binary_trans:
-      {
-      Mat<eT> tmp;
-      
-      load_okay = diskio::load_hdf5_binary(tmp, name, err_msg);
-      
-      if(load_okay)  { op_strans::apply_mat_noalias(*this, tmp); }
-      }
+    
+    case hdf5_binary_trans:  // kept for compatibility with earlier versions of Armadillo
+      return (*this).load(hdf5_name(name, std::string(), hdf5_opts::trans));
       break;
-
+    
     default:
       if(print_status)  { arma_debug_warn("Mat::load(): unsupported file type"); }
       load_okay = false;
@@ -7063,9 +7155,65 @@ Mat<eT>::load(const std::string name, const file_type type, const bool print_sta
   
   if(load_okay == false)
     {
-    (*this).reset();
+    (*this).soft_reset();
     }
+  
+  return load_okay;
+  }
+
+
+
+template<typename eT>
+inline
+arma_cold
+bool
+Mat<eT>::load(const hdf5_name& spec, const file_type type, const bool print_status)
+  {
+  arma_extra_debug_sigprint();
+  
+  if( (type != hdf5_binary) && (type != hdf5_binary_trans) )
+    {
+    if(print_status)  { arma_debug_warn("Mat::load(): unsupported file type for hdf5_name()"); }
+    (*this).soft_reset();
+    return false;
+    }
+  
+  bool load_okay = false;
+  std::string err_msg;
+  
+  const bool do_trans = bool(spec.opts.flags & hdf5_opts::flag_trans) || (type == hdf5_binary_trans);
+  
+  if(do_trans)
+    {
+    Mat<eT> tmp;
     
+    load_okay = diskio::load_hdf5_binary(tmp, spec, err_msg);
+    
+    if(load_okay)  { op_strans::apply_mat_noalias(*this, tmp); }
+    }
+  else
+    {
+    load_okay = diskio::load_hdf5_binary(*this, spec, err_msg);
+    }
+  
+  
+  if( (print_status == true) && (load_okay == false) )
+    {
+    if(err_msg.length() > 0)
+      {
+      arma_debug_warn("Mat::load(): ", err_msg, spec.filename);
+      }
+    else
+      {
+      arma_debug_warn("Mat::load(): couldn't read ", spec.filename);
+      }
+    }
+  
+  if(load_okay == false)
+    {
+    (*this).soft_reset();
+    }
+  
   return load_okay;
   }
 
@@ -7074,12 +7222,13 @@ Mat<eT>::load(const std::string name, const file_type type, const bool print_sta
 //! load a matrix from a stream
 template<typename eT>
 inline
+arma_cold
 bool
 Mat<eT>::load(std::istream& is, const file_type type, const bool print_status)
   {
   arma_extra_debug_sigprint();
   
-  bool load_okay;
+  bool load_okay = false;
   std::string err_msg;
   
   switch(type)
@@ -7107,7 +7256,7 @@ Mat<eT>::load(std::istream& is, const file_type type, const bool print_status)
     case arma_binary:
       load_okay = diskio::load_arma_binary(*this, is, err_msg);
       break;
-      
+    
     case pgm_binary:
       load_okay = diskio::load_pgm_binary(*this, is, err_msg);
       break;
@@ -7116,7 +7265,6 @@ Mat<eT>::load(std::istream& is, const file_type type, const bool print_status)
       if(print_status)  { arma_debug_warn("Mat::load(): unsupported file type"); }
       load_okay = false;
     }
-  
   
   if( (print_status == true) && (load_okay == false) )
     {
@@ -7132,9 +7280,9 @@ Mat<eT>::load(std::istream& is, const file_type type, const bool print_status)
   
   if(load_okay == false)
     {
-    (*this).reset();
+    (*this).soft_reset();
     }
-    
+  
   return load_okay;
   }
 
@@ -7143,6 +7291,7 @@ Mat<eT>::load(std::istream& is, const file_type type, const bool print_status)
 //! save the matrix to a file, without printing any error messages
 template<typename eT>
 inline
+arma_cold
 bool
 Mat<eT>::quiet_save(const std::string name, const file_type type) const
   {
@@ -7153,9 +7302,23 @@ Mat<eT>::quiet_save(const std::string name, const file_type type) const
 
 
 
+template<typename eT>
+inline
+arma_cold
+bool
+Mat<eT>::quiet_save(const hdf5_name& spec, const file_type type) const
+  {
+  arma_extra_debug_sigprint();
+  
+  return (*this).save(spec, type, false);
+  }
+
+
+
 //! save the matrix to a stream, without printing any error messages
 template<typename eT>
 inline
+arma_cold
 bool
 Mat<eT>::quiet_save(std::ostream& os, const file_type type) const
   {
@@ -7169,6 +7332,7 @@ Mat<eT>::quiet_save(std::ostream& os, const file_type type) const
 //! load a matrix from a file, without printing any error messages
 template<typename eT>
 inline
+arma_cold
 bool
 Mat<eT>::quiet_load(const std::string name, const file_type type)
   {
@@ -7179,9 +7343,23 @@ Mat<eT>::quiet_load(const std::string name, const file_type type)
 
 
 
+template<typename eT>
+inline
+arma_cold
+bool
+Mat<eT>::quiet_load(const hdf5_name& spec, const file_type type)
+  {
+  arma_extra_debug_sigprint();
+  
+  return (*this).load(spec, type, false);
+  }
+
+
+
 //! load a matrix from a stream, without printing any error messages
 template<typename eT>
 inline
+arma_cold
 bool
 Mat<eT>::quiet_load(std::istream& is, const file_type type)
   {
@@ -7194,10 +7372,25 @@ Mat<eT>::quiet_load(std::istream& is, const file_type type)
 
 template<typename eT>
 inline
-Mat<eT>::row_iterator::row_iterator(Mat<eT>& in_M, const uword in_row)
-  : M  (in_M  )
-  , row(in_row)
-  , col(0     )
+Mat<eT>::row_iterator::row_iterator()
+  : M          (NULL)
+  , current_ptr(NULL)
+  , current_row(0   )
+  , current_col(0   )
+  {
+  arma_extra_debug_sigprint();
+  // Technically this iterator is invalid (it does not point to a valid element)
+  }
+
+
+
+template<typename eT>
+inline
+Mat<eT>::row_iterator::row_iterator(const row_iterator& X)
+  : M          (X.M          )
+  , current_ptr(X.current_ptr)
+  , current_row(X.current_row)
+  , current_col(X.current_col)
   {
   arma_extra_debug_sigprint();
   }
@@ -7206,10 +7399,24 @@ Mat<eT>::row_iterator::row_iterator(Mat<eT>& in_M, const uword in_row)
 
 template<typename eT>
 inline
+Mat<eT>::row_iterator::row_iterator(Mat<eT>& in_M, const uword in_row)
+  : M          (&in_M               )
+  , current_ptr(&(in_M.at(in_row,0)))
+  , current_row(in_row              )
+  , current_col(0                   )
+  {
+  arma_extra_debug_sigprint();
+  }
+
+
+
+template<typename eT>
+inline
+arma_warn_unused
 eT&
 Mat<eT>::row_iterator::operator*()
   {
-  return M.at(row,col);
+  return (*current_ptr);
   }
 
 
@@ -7219,12 +7426,18 @@ inline
 typename Mat<eT>::row_iterator&
 Mat<eT>::row_iterator::operator++()
   {
-  ++col;
+  current_col++;
   
-  if(col >= M.n_cols)
+  if(current_col == M->n_cols)
     {
-    col = 0;
-    ++row;
+    current_col = 0;
+    current_row++;
+    
+    current_ptr = &(M->at(current_row, 0));
+    }
+  else
+    {
+    current_ptr += M->n_rows;
     }
   
   return *this;
@@ -7234,10 +7447,15 @@ Mat<eT>::row_iterator::operator++()
 
 template<typename eT>
 inline
-void
+arma_warn_unused
+typename Mat<eT>::row_iterator
 Mat<eT>::row_iterator::operator++(int)
   {
-  operator++();
+  typename Mat<eT>::row_iterator temp(*this);
+  
+  ++(*this);
+  
+  return temp;
   }
 
 
@@ -7247,16 +7465,20 @@ inline
 typename Mat<eT>::row_iterator&
 Mat<eT>::row_iterator::operator--()
   {
-  if(col > 0)
+  if(current_col > 0)
     {
-    --col;
+    current_col--;
+    
+    current_ptr -= M->n_rows;
     }
   else
     {
-    if(row > 0)
+    if(current_row > 0)
       {
-      col = M.n_cols - 1;
-      --row;
+      current_col = M->n_cols - 1;
+      current_row--;
+      
+      current_ptr = &(M->at(current_row, current_col));
       }
     }
   
@@ -7267,42 +7489,73 @@ Mat<eT>::row_iterator::operator--()
 
 template<typename eT>
 inline
-void
+arma_warn_unused
+typename Mat<eT>::row_iterator
 Mat<eT>::row_iterator::operator--(int)
   {
-  operator--();
+  typename Mat<eT>::row_iterator temp(*this);
+  
+  --(*this);
+  
+  return temp;
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
 bool
 Mat<eT>::row_iterator::operator!=(const typename Mat<eT>::row_iterator& X) const
   {
-  return ( (row != X.row) || (col != X.col) ) ? true : false;
+  return (current_ptr != X.current_ptr);
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
 bool
 Mat<eT>::row_iterator::operator==(const typename Mat<eT>::row_iterator& X) const
   {
-  return ( (row == X.row) && (col == X.col) ) ? true : false;
+  return (current_ptr == X.current_ptr);
   }
 
 
 
 template<typename eT>
 inline
-Mat<eT>::const_row_iterator::const_row_iterator(const Mat<eT>& in_M, const uword in_row)
-  : M  (in_M  )
-  , row(in_row)
-  , col(0     )
+arma_warn_unused
+bool
+Mat<eT>::row_iterator::operator!=(const typename Mat<eT>::const_row_iterator& X) const
+  {
+  return (current_ptr != X.current_ptr);
+  }
+
+
+
+template<typename eT>
+inline
+arma_warn_unused
+bool
+Mat<eT>::row_iterator::operator==(const typename Mat<eT>::const_row_iterator& X) const
+  {
+  return (current_ptr == X.current_ptr);
+  }
+
+
+
+template<typename eT>
+inline
+Mat<eT>::const_row_iterator::const_row_iterator()
+  : M          (NULL)
+  , current_ptr(NULL)
+  , current_row(0   )
+  , current_col(0   )
   {
   arma_extra_debug_sigprint();
+  // Technically this iterator is invalid (it does not point to a valid element)
   }
 
 
@@ -7310,9 +7563,10 @@ Mat<eT>::const_row_iterator::const_row_iterator(const Mat<eT>& in_M, const uword
 template<typename eT>
 inline
 Mat<eT>::const_row_iterator::const_row_iterator(const typename Mat<eT>::row_iterator& X)
-  : M  (X.M)
-  , row(X.row)
-  , col(X.col)
+  : M          (X.M          )
+  , current_ptr(X.current_ptr)
+  , current_row(X.current_row)
+  , current_col(X.current_col)
   {
   arma_extra_debug_sigprint();
   }
@@ -7321,10 +7575,37 @@ Mat<eT>::const_row_iterator::const_row_iterator(const typename Mat<eT>::row_iter
 
 template<typename eT>
 inline
-eT
+Mat<eT>::const_row_iterator::const_row_iterator(const typename Mat<eT>::const_row_iterator& X)
+  : M          (X.M          )
+  , current_ptr(X.current_ptr)
+  , current_row(X.current_row)
+  , current_col(X.current_col)
+  {
+  arma_extra_debug_sigprint();
+  }
+
+
+
+template<typename eT>
+inline
+Mat<eT>::const_row_iterator::const_row_iterator(const Mat<eT>& in_M, const uword in_row)
+  : M          (&in_M               )
+  , current_ptr(&(in_M.at(in_row,0)))
+  , current_row(in_row              )
+  , current_col(0                   )
+  {
+  arma_extra_debug_sigprint();
+  }
+
+
+
+template<typename eT>
+inline
+arma_warn_unused
+const eT&
 Mat<eT>::const_row_iterator::operator*() const
   {
-  return M.at(row,col);
+  return (*current_ptr);
   }
 
 
@@ -7334,12 +7615,18 @@ inline
 typename Mat<eT>::const_row_iterator&
 Mat<eT>::const_row_iterator::operator++()
   {
-  ++col;
+  current_col++;
   
-  if(col >= M.n_cols)
+  if(current_col == M->n_cols)
     {
-    col = 0;
-    ++row;
+    current_col = 0;
+    current_row++;
+    
+    current_ptr = &(M->at(current_row, 0));
+    }
+  else
+    {
+    current_ptr += M->n_rows;
     }
   
   return *this;
@@ -7349,10 +7636,15 @@ Mat<eT>::const_row_iterator::operator++()
 
 template<typename eT>
 inline
-void
+arma_warn_unused
+typename Mat<eT>::const_row_iterator
 Mat<eT>::const_row_iterator::operator++(int)
   {
-  operator++();
+  typename Mat<eT>::const_row_iterator temp(*this);
+  
+  ++(*this);
+  
+  return temp;
   }
 
 
@@ -7362,16 +7654,20 @@ inline
 typename Mat<eT>::const_row_iterator&
 Mat<eT>::const_row_iterator::operator--()
   {
-  if(col > 0)
+  if(current_col > 0)
     {
-    --col;
+    current_col--;
+    
+    current_ptr -= M->n_rows;
     }
   else
     {
-    if(row > 0)
+    if(current_row > 0)
       {
-      col = M.n_cols - 1;
-      --row;
+      current_col = M->n_cols - 1;
+      current_row--;
+      
+      current_ptr = &(M->at(current_row, current_col));
       }
     }
   
@@ -7382,30 +7678,59 @@ Mat<eT>::const_row_iterator::operator--()
 
 template<typename eT>
 inline
-void
+arma_warn_unused
+typename Mat<eT>::const_row_iterator
 Mat<eT>::const_row_iterator::operator--(int)
   {
-  operator--();
+  typename Mat<eT>::const_row_iterator temp(*this);
+  
+  --(*this);
+  
+  return temp;
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
+bool
+Mat<eT>::const_row_iterator::operator!=(const typename Mat<eT>::row_iterator& X) const
+  {
+  return (current_ptr != X.current_ptr);
+  }
+
+
+
+template<typename eT>
+inline
+arma_warn_unused
+bool
+Mat<eT>::const_row_iterator::operator==(const typename Mat<eT>::row_iterator& X) const
+  {
+  return (current_ptr == X.current_ptr);
+  }
+
+
+
+template<typename eT>
+inline
+arma_warn_unused
 bool
 Mat<eT>::const_row_iterator::operator!=(const typename Mat<eT>::const_row_iterator& X) const
   {
-  return ( (row != X.row) || (col != X.col) ) ? true : false;
+  return (current_ptr != X.current_ptr);
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
 bool
 Mat<eT>::const_row_iterator::operator==(const typename Mat<eT>::const_row_iterator& X) const
   {
-  return ( (row == X.row) && (col == X.col) ) ? true : false;
+  return (current_ptr == X.current_ptr);
   }
 
 
@@ -7413,13 +7738,13 @@ Mat<eT>::const_row_iterator::operator==(const typename Mat<eT>::const_row_iterat
 template<typename eT>
 inline
 Mat<eT>::row_col_iterator::row_col_iterator()
-  : M           (NULL)
-  , current_pos (NULL)
-  , internal_col(0   )
-  , internal_row(0   )
+  : M          (NULL)
+  , current_ptr(NULL)
+  , current_col(0   )
+  , current_row(0   )
   {
   arma_extra_debug_sigprint();
-  // Technically this iterator is invalid (it does not point to a real element)
+  // Technically this iterator is invalid (it does not point to a valid element)
   }
 
 
@@ -7427,10 +7752,10 @@ Mat<eT>::row_col_iterator::row_col_iterator()
 template<typename eT>
 inline
 Mat<eT>::row_col_iterator::row_col_iterator(const row_col_iterator& in_it)
-  : M           (in_it.M           )
-  , current_pos (in_it.current_pos )
-  , internal_col(in_it.internal_col)
-  , internal_row(in_it.internal_row)
+  : M          (in_it.M          )
+  , current_ptr(in_it.current_ptr)
+  , current_col(in_it.current_col)
+  , current_row(in_it.current_row)
   {
   arma_extra_debug_sigprint();
   }
@@ -7440,10 +7765,10 @@ Mat<eT>::row_col_iterator::row_col_iterator(const row_col_iterator& in_it)
 template<typename eT>
 inline
 Mat<eT>::row_col_iterator::row_col_iterator(Mat<eT>& in_M, const uword in_row, const uword in_col)
-  : M           (&in_M                  )
-  , current_pos (&in_M.at(in_row,in_col))
-  , internal_col(in_col                 )
-  , internal_row(in_row                 )
+  : M          (&in_M                  )
+  , current_ptr(&in_M.at(in_row,in_col))
+  , current_col(in_col                 )
+  , current_row(in_row                 )
   {
   arma_extra_debug_sigprint();
   }
@@ -7452,10 +7777,11 @@ Mat<eT>::row_col_iterator::row_col_iterator(Mat<eT>& in_M, const uword in_row, c
 
 template<typename eT>
 inline
+arma_warn_unused
 eT&
 Mat<eT>::row_col_iterator::operator*()
   {
-  return *current_pos;
+  return *current_ptr;
   }
 
 
@@ -7465,14 +7791,14 @@ inline
 typename Mat<eT>::row_col_iterator&
 Mat<eT>::row_col_iterator::operator++()
   {
-  current_pos++;
-  internal_row++;
+  current_ptr++;
+  current_row++;
   
   // Check to see if we moved a column.
-  if(internal_row == M->n_rows)
+  if(current_row == M->n_rows)
     {
-    internal_col++;
-    internal_row = 0;
+    current_col++;
+    current_row = 0;
     }
   
   return *this;
@@ -7482,6 +7808,7 @@ Mat<eT>::row_col_iterator::operator++()
 
 template<typename eT>
 inline
+arma_warn_unused
 typename Mat<eT>::row_col_iterator
 Mat<eT>::row_col_iterator::operator++(int)
   {
@@ -7498,17 +7825,17 @@ template<typename eT>
 inline typename Mat<eT>::row_col_iterator&
 Mat<eT>::row_col_iterator::operator--()
   {
-  if(internal_row > 0)
+  if(current_row > 0)
     {
-    current_pos--;
-    internal_row--;
+    current_ptr--;
+    current_row--;
     }
   else
-  if(internal_col > 0)
+  if(current_col > 0)
     {
-    current_pos--;
-    internal_col--;
-    internal_row = M->n_rows - 1;
+    current_ptr--;
+    current_col--;
+    current_row = M->n_rows - 1;
     }
   
   return *this;
@@ -7518,6 +7845,7 @@ Mat<eT>::row_col_iterator::operator--()
 
 template<typename eT>
 inline
+arma_warn_unused
 typename Mat<eT>::row_col_iterator
 Mat<eT>::row_col_iterator::operator--(int)
   {
@@ -7532,60 +7860,66 @@ Mat<eT>::row_col_iterator::operator--(int)
 
 template<typename eT>
 inline
+arma_warn_unused
 uword
 Mat<eT>::row_col_iterator::row() const
   {
-  return internal_row;
+  return current_row;
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
 uword
 Mat<eT>::row_col_iterator::col() const
   {
-  return internal_col;
+  return current_col;
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
 bool
 Mat<eT>::row_col_iterator::operator==(const row_col_iterator& rhs) const
   {
-  return (current_pos == rhs.current_pos);
+  return (current_ptr == rhs.current_ptr);
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
 bool
 Mat<eT>::row_col_iterator::operator!=(const row_col_iterator& rhs) const
   {
-  return (current_pos != rhs.current_pos);
+  return (current_ptr != rhs.current_ptr);
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
 bool
 Mat<eT>::row_col_iterator::operator==(const const_row_col_iterator& rhs) const
   {
-  return (current_pos == rhs.current_pos);
+  return (current_ptr == rhs.current_ptr);
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
 bool
 Mat<eT>::row_col_iterator::operator!=(const const_row_col_iterator& rhs) const
   {
-  return (current_pos != rhs.current_pos);
+  return (current_ptr != rhs.current_ptr);
   }
 
 
@@ -7593,13 +7927,13 @@ Mat<eT>::row_col_iterator::operator!=(const const_row_col_iterator& rhs) const
 template<typename eT>
 inline
 Mat<eT>::const_row_col_iterator::const_row_col_iterator()
-  : M           (NULL)
-  , current_pos (NULL)
-  , internal_col(0   )
-  , internal_row(0   )
+  : M          (NULL)
+  , current_ptr(NULL)
+  , current_col(0   )
+  , current_row(0   )
   {
   arma_extra_debug_sigprint();
-  // Technically this iterator is invalid (it does not point to a real element)
+  // Technically this iterator is invalid (it does not point to a valid element)
   }
 
 
@@ -7607,10 +7941,10 @@ Mat<eT>::const_row_col_iterator::const_row_col_iterator()
 template<typename eT>
 inline
 Mat<eT>::const_row_col_iterator::const_row_col_iterator(const row_col_iterator& in_it)
-  : M           (in_it.M          )
-  , current_pos (in_it.current_pos)
-  , internal_col(in_it.col()      )
-  , internal_row(in_it.row()      )
+  : M          (in_it.M          )
+  , current_ptr(in_it.current_ptr)
+  , current_col(in_it.col()      )
+  , current_row(in_it.row()      )
   {
   arma_extra_debug_sigprint();
   }
@@ -7620,10 +7954,10 @@ Mat<eT>::const_row_col_iterator::const_row_col_iterator(const row_col_iterator& 
 template<typename eT>
 inline
 Mat<eT>::const_row_col_iterator::const_row_col_iterator(const const_row_col_iterator& in_it)
-  : M           (in_it.M          )
-  , current_pos (in_it.current_pos)
-  , internal_col(in_it.col()      )
-  , internal_row(in_it.row()      )
+  : M          (in_it.M          )
+  , current_ptr(in_it.current_ptr)
+  , current_col(in_it.col()      )
+  , current_row(in_it.row()      )
   {
   arma_extra_debug_sigprint();
   }
@@ -7633,10 +7967,10 @@ Mat<eT>::const_row_col_iterator::const_row_col_iterator(const const_row_col_iter
 template<typename eT>
 inline
 Mat<eT>::const_row_col_iterator::const_row_col_iterator(const Mat<eT>& in_M, const uword in_row, const uword in_col)
-  : M           (&in_M                  )
-  , current_pos (&in_M.at(in_row,in_col))
-  , internal_col(in_col                 )
-  , internal_row(in_row                 )
+  : M          (&in_M                  )
+  , current_ptr(&in_M.at(in_row,in_col))
+  , current_col(in_col                 )
+  , current_row(in_row                 )
   {
   arma_extra_debug_sigprint();
   }
@@ -7645,10 +7979,11 @@ Mat<eT>::const_row_col_iterator::const_row_col_iterator(const Mat<eT>& in_M, con
 
 template<typename eT>
 inline
+arma_warn_unused
 const eT&
 Mat<eT>::const_row_col_iterator::operator*() const
   {
-  return *current_pos;
+  return *current_ptr;
   }
 
 
@@ -7658,14 +7993,14 @@ inline
 typename Mat<eT>::const_row_col_iterator&
 Mat<eT>::const_row_col_iterator::operator++()
   {
-  current_pos++;
-  internal_row++;
+  current_ptr++;
+  current_row++;
   
   // Check to see if we moved a column.
-  if(internal_row == M->n_rows)
+  if(current_row == M->n_rows)
     {
-    internal_col++;
-    internal_row = 0;
+    current_col++;
+    current_row = 0;
     }
   
   return *this;
@@ -7675,6 +8010,7 @@ Mat<eT>::const_row_col_iterator::operator++()
 
 template<typename eT>
 inline
+arma_warn_unused
 typename Mat<eT>::const_row_col_iterator
 Mat<eT>::const_row_col_iterator::operator++(int)
   {
@@ -7692,17 +8028,17 @@ inline
 typename Mat<eT>::const_row_col_iterator&
 Mat<eT>::const_row_col_iterator::operator--()
   {
-  if(internal_row > 0)
+  if(current_row > 0)
     {
-    current_pos--;
-    internal_row--;
+    current_ptr--;
+    current_row--;
     }
   else
-  if(internal_col > 0)
+  if(current_col > 0)
     {
-    current_pos--;
-    internal_col--;
-    internal_row = M->n_rows - 1;
+    current_ptr--;
+    current_col--;
+    current_row = M->n_rows - 1;
     }
   
   return *this;
@@ -7712,6 +8048,7 @@ Mat<eT>::const_row_col_iterator::operator--()
 
 template<typename eT>
 inline
+arma_warn_unused
 typename Mat<eT>::const_row_col_iterator
 Mat<eT>::const_row_col_iterator::operator--(int)
   {
@@ -7726,60 +8063,66 @@ Mat<eT>::const_row_col_iterator::operator--(int)
 
 template<typename eT>
 inline
+arma_warn_unused
 uword
 Mat<eT>::const_row_col_iterator::row() const
   {
-  return internal_row;
+  return current_row;
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
 uword
 Mat<eT>::const_row_col_iterator::col() const
   {
-  return internal_col;
+  return current_col;
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
 bool
 Mat<eT>::const_row_col_iterator::operator==(const const_row_col_iterator& rhs) const
   {
-  return (current_pos == rhs.current_pos);
+  return (current_ptr == rhs.current_ptr);
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
 bool
 Mat<eT>::const_row_col_iterator::operator!=(const const_row_col_iterator& rhs) const
   {
-  return (current_pos != rhs.current_pos);
+  return (current_ptr != rhs.current_ptr);
   }
 
 
   
 template<typename eT>
 inline
+arma_warn_unused
 bool
 Mat<eT>::const_row_col_iterator::operator==(const row_col_iterator& rhs) const
   {
-  return (current_pos == rhs.current_pos);
+  return (current_ptr == rhs.current_ptr);
   }
 
 
 
 template<typename eT>
 inline
+arma_warn_unused
 bool
 Mat<eT>::const_row_col_iterator::operator!=(const row_col_iterator& rhs) const
   {
-  return (current_pos != rhs.current_pos);
+  return (current_ptr != rhs.current_ptr);
   }
 
 
@@ -8171,7 +8514,7 @@ Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::fixed(const std::string& text)
   template<typename eT>
   template<uword fixed_n_rows, uword fixed_n_cols>
   inline
-  const Mat<eT>&
+  Mat<eT>&
   Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::operator=(const std::initializer_list<eT>& list)
     {
     arma_extra_debug_sigprint();
@@ -8207,7 +8550,7 @@ Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::fixed(const std::string& text)
   template<typename eT>
   template<uword fixed_n_rows, uword fixed_n_cols>
   inline
-  const Mat<eT>&
+  Mat<eT>&
   Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::operator=(const std::initializer_list< std::initializer_list<eT> >& list)
     {
     arma_extra_debug_sigprint();
@@ -8224,7 +8567,7 @@ Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::fixed(const std::string& text)
 template<typename eT>
 template<uword fixed_n_rows, uword fixed_n_cols>
 arma_inline
-const Mat<eT>&
+Mat<eT>&
 Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::operator=(const fixed<fixed_n_rows, fixed_n_cols>& X)
   {
   arma_extra_debug_sigprint();
@@ -8248,7 +8591,7 @@ Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::operator=(const fixed<fixed_n_rows, 
   template<uword fixed_n_rows, uword fixed_n_cols>
   template<typename T1, typename eop_type>
   inline
-  const Mat<eT>&
+  Mat<eT>&
   Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::operator=(const eOp<T1, eop_type>& X)
     {
     arma_extra_debug_sigprint();
@@ -8281,7 +8624,7 @@ Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::operator=(const fixed<fixed_n_rows, 
   template<uword fixed_n_rows, uword fixed_n_cols>
   template<typename T1, typename T2, typename eglue_type>
   inline
-  const Mat<eT>&
+  Mat<eT>&
   Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::operator=(const eGlue<T1, T2, eglue_type>& X)
     {
     arma_extra_debug_sigprint();
@@ -8575,7 +8918,6 @@ Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::is_vec() const
 
 template<typename eT>
 template<uword fixed_n_rows, uword fixed_n_cols>
-arma_hot
 inline
 const Mat<eT>&
 Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::fill(const eT val)
@@ -8593,7 +8935,6 @@ Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::fill(const eT val)
 
 template<typename eT>
 template<uword fixed_n_rows, uword fixed_n_cols>
-arma_hot
 inline
 const Mat<eT>&
 Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::zeros()
@@ -8611,7 +8952,6 @@ Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::zeros()
 
 template<typename eT>
 template<uword fixed_n_rows, uword fixed_n_cols>
-arma_hot
 inline
 const Mat<eT>&
 Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::ones()
@@ -8629,7 +8969,7 @@ Mat<eT>::fixed<fixed_n_rows, fixed_n_cols>::ones()
 
 //! prefix ++
 template<typename eT>
-arma_inline
+inline
 void
 Mat_aux::prefix_pp(Mat<eT>& x)
   {
@@ -8654,7 +8994,7 @@ Mat_aux::prefix_pp(Mat<eT>& x)
 
 //! prefix ++ for complex numbers (work around for limitations of the std::complex class)
 template<typename T>
-arma_inline
+inline
 void
 Mat_aux::prefix_pp(Mat< std::complex<T> >& x)
   {
@@ -8665,7 +9005,7 @@ Mat_aux::prefix_pp(Mat< std::complex<T> >& x)
 
 //! postfix ++
 template<typename eT>
-arma_inline
+inline
 void
 Mat_aux::postfix_pp(Mat<eT>& x)
   {
@@ -8690,7 +9030,7 @@ Mat_aux::postfix_pp(Mat<eT>& x)
 
 //! postfix ++ for complex numbers (work around for limitations of the std::complex class)
 template<typename T>
-arma_inline
+inline
 void
 Mat_aux::postfix_pp(Mat< std::complex<T> >& x)
   {
@@ -8701,7 +9041,7 @@ Mat_aux::postfix_pp(Mat< std::complex<T> >& x)
 
 //! prefix --
 template<typename eT>
-arma_inline
+inline
 void
 Mat_aux::prefix_mm(Mat<eT>& x)
   {
@@ -8726,7 +9066,7 @@ Mat_aux::prefix_mm(Mat<eT>& x)
 
 //! prefix -- for complex numbers (work around for limitations of the std::complex class)
 template<typename T>
-arma_inline
+inline
 void
 Mat_aux::prefix_mm(Mat< std::complex<T> >& x)
   {
@@ -8737,7 +9077,7 @@ Mat_aux::prefix_mm(Mat< std::complex<T> >& x)
 
 //! postfix --
 template<typename eT>
-arma_inline
+inline
 void
 Mat_aux::postfix_mm(Mat<eT>& x)
   {
@@ -8762,7 +9102,7 @@ Mat_aux::postfix_mm(Mat<eT>& x)
 
 //! postfix ++ for complex numbers (work around for limitations of the std::complex class)
 template<typename T>
-arma_inline
+inline
 void
 Mat_aux::postfix_mm(Mat< std::complex<T> >& x)
   {
